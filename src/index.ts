@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import helmet from 'helmet';
+// import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import path from 'path';
@@ -44,9 +44,10 @@ async function initializeServer() {
     const app = express();
 
     // Security middleware
-    app.use(helmet({
-      contentSecurityPolicy: false, // Allow inline scripts for status page
-    }));
+    // Temporarily disable helmet for debugging
+    // app.use(helmet({
+    //   contentSecurityPolicy: false,
+    // }));
     app.use(cors({
       origin: config.cors.origin,
       credentials: true,
