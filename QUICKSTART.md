@@ -1,16 +1,56 @@
 # Quick Start Guide
 
-## Installation & Running
+## 一键安装（推荐）
+
+### Windows (PowerShell)
+```powershell
+.\install.ps1
+npm start
+```
+
+### Linux/Mac
+```bash
+chmod +x install.sh
+./install.sh
+npm start
+```
+
+安装脚本会自动：
+- ✅ 检查 Node.js 和 npm
+- ✅ 安装依赖
+- ✅ 创建配置文件
+- ✅ 编译 TypeScript
+
+## 手动安装
 
 ```bash
 # 1. Install dependencies
 npm install
 
-# 2. Start development server
+# 2. Copy configuration
+cp .env.example .env
+
+# 3. Build
+npm run build
+
+# 4. Start development server
 npm run dev
 
 # Server will start on http://localhost:3000
 ```
+
+## 服务状态监控
+
+安装完成后，访问以下地址查看服务器实时状态：
+
+🖥️ **状态监控面板**: http://localhost:3000/status
+
+监控内容包括：
+- 服务器运行状态和运行时间
+- 存储使用情况
+- 用户统计
+- 系统资源使用（CPU、内存）
+- Node.js 进程信息
 
 ## Quick Test
 
@@ -67,14 +107,21 @@ npm start
 
 ## API Endpoints
 
-- `GET /health` - Health check
+### 认证
 - `POST /api/auth/register` - Register new user
 - `POST /api/auth/login` - Login
+
+### 文件管理
 - `POST /api/files/upload` - Upload single file
 - `POST /api/files/upload-multiple` - Upload multiple files
 - `GET /api/files` - List all user files
 - `GET /api/files/:id` - Download file
 - `DELETE /api/files/:id` - Delete file
 - `GET /api/files/storage/usage` - Get storage statistics
+
+### 监控
+- `GET /health` - Health check
+- `GET /status` - Status monitoring web page
+- `GET /api/status` - Status API (JSON)
 
 See [README.md](README.md) for full documentation.

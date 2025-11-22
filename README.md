@@ -10,10 +10,47 @@ A secure file server with user authentication for PC Utility Tool. Provides file
 - 🚀 **Cross-Platform** - Runs on Linux and Windows
 - 🛡️ **Security** - Rate limiting, CORS, helmet protection
 - 📊 **Storage Tracking** - Monitor storage usage per user
+- 🖥️ **Status Monitoring** - Real-time server status dashboard
+- ⚡ **One-Click Install** - Automated setup scripts for Windows and Linux
 
 ## Quick Start
 
-### Installation
+### 一键安装（推荐）
+
+#### Windows (PowerShell)
+```powershell
+# Clone the repository
+git clone git@github.com:papalqi/pc-utility-tool-electron-server.git
+cd pc-utility-tool-electron-server
+
+# Run installation script
+.\install.ps1
+
+# Start server
+npm start
+```
+
+#### Linux/Mac
+```bash
+# Clone the repository
+git clone git@github.com:papalqi/pc-utility-tool-electron-server.git
+cd pc-utility-tool-electron-server
+
+# Run installation script
+chmod +x install.sh
+./install.sh
+
+# Start server
+npm start
+```
+
+安装脚本会自动完成：
+- ✅ 检查 Node.js 和 npm 环境
+- ✅ 安装项目依赖
+- ✅ 创建配置文件（.env）
+- ✅ 编译 TypeScript 代码
+
+### 手动安装
 
 ```bash
 # Clone the repository
@@ -60,6 +97,21 @@ npm run build
 # Start production server
 npm start
 ```
+
+### 服务状态监控
+
+服务器启动后，访问以下地址查看实时状态：
+
+🖥️ **状态监控面板**: http://localhost:3000/status
+
+监控面板实时显示：
+- 服务器运行状态和运行时间
+- 文件存储统计（文件数量、已用空间）
+- 用户数量统计
+- 系统资源使用（CPU 核心数、内存使用率）
+- Node.js 进程信息（版本、内存占用）
+
+面板每 5 秒自动刷新，提供实时监控数据。
 
 ## API Documentation
 
@@ -309,6 +361,68 @@ Check if the server is running.
   "success": true,
   "message": "Server is running",
   "timestamp": "2025-01-01T00:00:00.000Z"
+}
+```
+
+### Status Monitoring
+
+#### Web Dashboard
+
+Access the visual status monitoring dashboard:
+
+**Endpoint**: `GET /status`
+
+Visit http://localhost:3000/status in your browser to see:
+- Real-time server status
+- Storage usage statistics
+- User statistics
+- System resource usage
+- Node.js process information
+
+The dashboard auto-refreshes every 5 seconds.
+
+#### Status API
+
+Get server status in JSON format.
+
+**Endpoint**: `GET /api/status`
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "server": {
+      "status": "running",
+      "uptime": 123456,
+      "startTime": "2025-01-01T00:00:00.000Z",
+      "environment": "development",
+      "port": 3000
+    },
+    "storage": {
+      "totalFiles": 5,
+      "totalSize": 1024000,
+      "totalSizeFormatted": "1 MB"
+    },
+    "users": {
+      "total": 2
+    },
+    "system": {
+      "platform": "win32",
+      "cpus": 8,
+      "totalMemory": 17179869184,
+      "freeMemory": 8589934592
+    },
+    "node": {
+      "version": "v18.17.0",
+      "pid": 12345,
+      "memoryUsage": {
+        "rss": 50331648,
+        "heapTotal": 16777216,
+        "heapUsed": 12582912
+      }
+    }
+  }
 }
 ```
 

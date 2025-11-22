@@ -176,6 +176,13 @@ class FileService {
     const userFiles = await this.getFilesByUser(userId);
     return userFiles.reduce((total, file) => total + file.size, 0);
   }
+
+  /**
+   * Get all files (for admin/status monitoring)
+   */
+  getAllFiles(): FileMetadata[] {
+    return Array.from(this.files.values());
+  }
 }
 
 export const fileService = new FileService();

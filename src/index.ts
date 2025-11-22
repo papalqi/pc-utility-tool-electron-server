@@ -3,12 +3,14 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
+import path from 'path';
 import { config, validateConfig } from './config';
 import { logger } from './utils/logger';
 import { userService } from './services/userService';
 import { fileService } from './services/fileService';
 import authRoutes from './routes/auth';
 import fileRoutes from './routes/files';
+import statusRoutes from './routes/status';
 
 const log = logger.createScope('Server');
 
@@ -42,7 +44,9 @@ async function initializeServer() {
     const app = express();
 
     // Security middleware
-    app.use(helmet());
+    app.use(helmet({
+      contentSecurityPolicy: false, // Allow inline scripts for status page
+    }));
     app.use(cors({
       origin: config.cors.origin,
       credentials: true,
@@ -64,6 +68,9 @@ async function initializeServer() {
     app.use(express.json());
     app.use(express.urlencoded({ extended: true }));
 
+    // Static files for status page
+    app.use(express.static(path.join(process.cwd(), 'public')));
+
     // Health check endpoint
     app.get('/health', (_req, res) => {
       res.json({
@@ -76,6 +83,9 @@ async function initializeServer() {
     // API routes
     app.use('/api/auth', authRoutes);
     app.use('/api/files', fileRoutes);
+    
+    // Status monitoring routes
+    app.use(statusRoutes);
 
     // 404 handler
     app.use((_req, res) => {
