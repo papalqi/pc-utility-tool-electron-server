@@ -34,8 +34,6 @@ jobs:
         key: ${{ secrets.SERVER_SSH_KEY }}
         port: ${{ secrets.SERVER_PORT || 22 }}
         script: |
-          cd /path/to/your/app
-          git pull origin main
-          npm ci
-          npm run build
-          pm2 restart pc-utility-tool-server || pm2 start npm --name "pc-utility-tool-server" -- start
+          cd /root/pc-utility-tool-electron-server
+          chmod +x deploy.sh
+          ./deploy.sh
