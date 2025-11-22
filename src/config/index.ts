@@ -41,7 +41,7 @@ export const config = {
   cors: {
     origin: process.env.CORS_ORIGIN || '*',
   },
-} as const;
+};
 
 /**
  * Validate required configuration

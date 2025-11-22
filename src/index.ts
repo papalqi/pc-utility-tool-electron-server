@@ -65,7 +65,7 @@ async function initializeServer() {
     app.use(express.urlencoded({ extended: true }));
 
     // Health check endpoint
-    app.get('/health', (req, res) => {
+    app.get('/health', (_req, res) => {
       res.json({
         success: true,
         message: 'Server is running',
@@ -78,7 +78,7 @@ async function initializeServer() {
     app.use('/api/files', fileRoutes);
 
     // 404 handler
-    app.use((req, res) => {
+    app.use((_req, res) => {
       res.status(404).json({
         success: false,
         error: 'Not found',
@@ -86,7 +86,7 @@ async function initializeServer() {
     });
 
     // Error handler
-    app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
       log.error('Unhandled error', err);
       res.status(500).json({
         success: false,

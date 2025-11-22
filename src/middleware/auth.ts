@@ -1,5 +1,5 @@
 import { Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import { AuthRequest, JWTPayload, ApiResponse } from '../types';
 import { config } from '../config';
 import { logger } from '../utils/logger';
@@ -43,6 +43,6 @@ export function authenticateToken(
  */
 export function generateToken(payload: JWTPayload): string {
   return jwt.sign(payload, config.jwt.secret, {
-    expiresIn: config.jwt.expiresIn,
-  });
+    expiresIn: config.jwt.expiresIn as string | number,
+  } as SignOptions);
 }
