@@ -601,6 +601,33 @@ pc-utility-tool-electron-server/
 | `RATE_LIMIT_MAX_REQUESTS` | Max requests per window | `100` |
 | `CORS_ORIGIN` | Allowed CORS origins | `*` |
 
+## Deployment
+
+### 自动部署（推荐）
+
+使用 GitHub Actions 实现推送代码后自动部署到服务器。
+
+详细步骤请查看 [DEPLOYMENT.md](DEPLOYMENT.md)
+
+**快速开始：**
+
+1. 配置 GitHub Secrets（服务器信息）
+2. 修改 `.github/workflows/deploy.yml` 中的路径
+3. 推送代码到 `main` 分支
+4. GitHub Actions 自动部署
+
+### 手动部署
+
+```bash
+# Linux/Mac
+./deploy.sh
+
+# Windows
+.\deploy.ps1
+```
+
+完整部署指南：[DEPLOYMENT.md](DEPLOYMENT.md)
+
 ## Scripts
 
 - `npm run dev` - Start development server with hot reload

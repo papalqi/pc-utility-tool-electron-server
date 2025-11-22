@@ -3,6 +3,22 @@ node_modules/
 package-lock.json
 yarn.lock
 
+# Environment files
+.env
+
+# Build output
+dist/
+build/
+
+# User data
+uploads/
+data/
+
+# Deployment
+logs/
+backups/
+.pm2/
+
 # Build output
 dist/
 build/
