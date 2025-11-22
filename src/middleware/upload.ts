@@ -34,7 +34,7 @@ const storage = multer.diskStorage({
 /**
  * File filter
  */
-const fileFilter = (_req: any, _file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+const fileFilter = (_req: AuthRequest, _file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   // You can add file type restrictions here
   // For now, accept all files
   cb(null, true);

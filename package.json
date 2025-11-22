@@ -48,11 +48,11 @@
     "@types/node": "^20.10.6",
     "@types/compression": "^1.7.5",
     "@types/uuid": "^9.0.7",
-    "@typescript-eslint/eslint-plugin": "^6.17.0",
-    "@typescript-eslint/parser": "^6.17.0",
+    "@typescript-eslint/eslint-plugin": "^8.17.0",
+    "@typescript-eslint/parser": "^8.17.0",
     "eslint": "^8.56.0",
     "prettier": "^3.1.1",
-    "typescript": "^5.3.3",
+    "typescript": "^5.9.3",
     "ts-node-dev": "^2.0.0"
   }
 }

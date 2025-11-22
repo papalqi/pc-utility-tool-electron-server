@@ -11,9 +11,9 @@ const router = Router();
  * POST /api/auth/register
  * Register a new user
  */
-router.post('/register', async (req: Request<{}, {}, RegisterData>, res: Response<ApiResponse<AuthResponse>>) => {
+router.post('/register', async (req: Request, res: Response<ApiResponse<AuthResponse>>) => {
   try {
-    const { username, password } = req.body;
+    const { username, password } = req.body as RegisterData;
 
     // Validation
     if (!username || !password) {
@@ -66,9 +66,9 @@ router.post('/register', async (req: Request<{}, {}, RegisterData>, res: Respons
  * POST /api/auth/login
  * Login with username and password
  */
-router.post('/login', async (req: Request<{}, {}, LoginCredentials>, res: Response<ApiResponse<AuthResponse>>) => {
+router.post('/login', async (req: Request, res: Response<ApiResponse<AuthResponse>>) => {
   try {
-    const { username, password } = req.body;
+    const { username, password } = req.body as LoginCredentials;
 
     // Validation
     if (!username || !password) {

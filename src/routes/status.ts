@@ -11,7 +11,7 @@ const router = Router();
  * GET /api/status
  * Get comprehensive server status (requires authentication in production)
  */
-router.get('/api/status', async (_req: Request, res: Response<ApiResponse<any>>) => {
+router.get('/api/status', async (_req: Request, res: Response<ApiResponse<unknown>>) => {
   try {
     const status = await statusService.getStatus();
     res.json({
