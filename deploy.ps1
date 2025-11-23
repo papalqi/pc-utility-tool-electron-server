@@ -65,7 +65,14 @@ Write-Host ""
 
 # 5. 编译项目
 Write-Host "[5/6] 编译项目..." -ForegroundColor Yellow
-npm run build
+# 直接调用 tsc，避免 npm scripts 问题
+if (Test-Path ".\node_modules\.bin\tsc.cmd") {
+    & ".\node_modules\.bin\tsc.cmd"
+} else {
+    Write-Host "⚠ 未找到 tsc，尝试使用 npx..." -ForegroundColor Yellow
+    npx tsc
+}
+
 if ($LASTEXITCODE -eq 0) {
     Write-Host "✓ 编译成功" -ForegroundColor Green
 } else {
@@ -80,17 +87,21 @@ Write-Host ""
 # 6. 启动服务
 Write-Host "[6/6] 启动服务..." -ForegroundColor Yellow
 if (Get-Command pm2 -ErrorAction SilentlyContinue) {
-    # 使用 PM2
-    pm2 start npm --name $APP_NAME -- start
-    if ($LASTEXITCODE -ne 0) {
-        pm2 restart $APP_NAME
-    }
+    # 使用 PM2 - 直接启动 node 而不是通过 npm
+    pm2 delete $APP_NAME -s 2>$null
+    pm2 start "dist/index.js" --name $APP_NAME --node-args="--max-old-space-size=2048"
     pm2 save
     Write-Host "✓ 服务已通过 PM2 启动" -ForegroundColor Green
 } else {
-    # 使用后台进程
-    Start-Process -FilePath "npm" -ArgumentList "start" -WindowStyle Hidden -WorkingDirectory $APP_DIR
-    Write-Host "✓ 服务已在后台启动" -ForegroundColor Green
+    # 使用后台进程 - 直接运行 node
+    $nodeExe = Get-Command node -ErrorAction SilentlyContinue
+    if ($nodeExe) {
+        Start-Process -FilePath "node" -ArgumentList "dist/index.js" -WindowStyle Hidden -WorkingDirectory $APP_DIR
+        Write-Host "✓ 服务已在后台启动" -ForegroundColor Green
+    } else {
+        Write-Host "✗ 找不到 node 命令" -ForegroundColor Red
+        exit 1
+    }
 }
 Write-Host ""
 
