@@ -40,12 +40,14 @@ Write-Host ""
 # 3. 拉取最新代码
 Write-Host "[3/6] 拉取最新代码..." -ForegroundColor Yellow
 git fetch origin
-git reset --hard "origin/$BRANCH"
+# 使用 pull 而不是 reset --hard，保留本地提交
+git pull origin $BRANCH --rebase
 if ($LASTEXITCODE -eq 0) {
     Write-Host "✓ 代码已更新到最新版本" -ForegroundColor Green
 } else {
-    Write-Host "✗ 代码拉取失败" -ForegroundColor Red
-    exit 1
+    Write-Host "⚠ 代码拉取可能有冲突，请手动处理" -ForegroundColor Yellow
+    Write-Host "提示: 如果有冲突，解决后运行: git rebase --continue" -ForegroundColor Cyan
+    # 不退出，继续部署本地版本
 }
 Write-Host ""
 
