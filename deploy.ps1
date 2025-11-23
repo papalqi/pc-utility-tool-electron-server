@@ -67,12 +67,23 @@ Write-Host ""
 
 # 5. 编译项目
 Write-Host "[5/6] 编译项目..." -ForegroundColor Yellow
-# 直接调用 tsc，避免 npm scripts 问题
-if (Test-Path ".\node_modules\.bin\tsc.cmd") {
-    & ".\node_modules\.bin\tsc.cmd"
+
+# 查找 node 可执行文件
+$nodeExe = Get-Command node -ErrorAction SilentlyContinue
+if ($nodeExe) {
+    $nodePath = $nodeExe.Source
+    Write-Host "✓ 找到 Node.js: $nodePath" -ForegroundColor Gray
+    
+    # 直接用 node 调用 tsc
+    if (Test-Path ".\node_modules\typescript\bin\tsc") {
+        & $nodePath ".\node_modules\typescript\bin\tsc"
+    } else {
+        Write-Host "✗ 未找到 TypeScript" -ForegroundColor Red
+        exit 1
+    }
 } else {
-    Write-Host "⚠ 未找到 tsc，尝试使用 npx..." -ForegroundColor Yellow
-    npx tsc
+    Write-Host "✗ 找不到 Node.js，请确保已安装并添加到 PATH" -ForegroundColor Red
+    exit 1
 }
 
 if ($LASTEXITCODE -eq 0) {
@@ -88,22 +99,25 @@ Write-Host ""
 
 # 6. 启动服务
 Write-Host "[6/6] 启动服务..." -ForegroundColor Yellow
+
+# 查找 node 可执行文件
+$nodeExe = Get-Command node -ErrorAction SilentlyContinue
+if (-not $nodeExe) {
+    Write-Host "✗ 找不到 Node.js" -ForegroundColor Red
+    exit 1
+}
+
 if (Get-Command pm2 -ErrorAction SilentlyContinue) {
-    # 使用 PM2 - 直接启动 node 而不是通过 npm
+    # 使用 PM2
     pm2 delete $APP_NAME -s 2>$null
     pm2 start "dist/index.js" --name $APP_NAME --node-args="--max-old-space-size=2048"
     pm2 save
     Write-Host "✓ 服务已通过 PM2 启动" -ForegroundColor Green
 } else {
-    # 使用后台进程 - 直接运行 node
-    $nodeExe = Get-Command node -ErrorAction SilentlyContinue
-    if ($nodeExe) {
-        Start-Process -FilePath "node" -ArgumentList "dist/index.js" -WindowStyle Hidden -WorkingDirectory $APP_DIR
-        Write-Host "✓ 服务已在后台启动" -ForegroundColor Green
-    } else {
-        Write-Host "✗ 找不到 node 命令" -ForegroundColor Red
-        exit 1
-    }
+    # 使用后台进程
+    $nodePath = $nodeExe.Source
+    Start-Process -FilePath $nodePath -ArgumentList "dist/index.js" -WindowStyle Hidden -WorkingDirectory $APP_DIR
+    Write-Host "✓ 服务已在后台启动 (PID: 使用 Get-Process -Name node 查看)" -ForegroundColor Green
 }
 Write-Host ""
 
