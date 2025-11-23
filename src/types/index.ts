@@ -41,6 +41,7 @@ export interface FileMetadata {
   mimetype: string;
   userId: string;
   uploadedAt: Date;
+  cloudUrl?: string; // 七牛云URL（如果已上传到云）
 }
 
 /**

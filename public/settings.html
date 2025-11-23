@@ -332,6 +332,46 @@
                     <div class="form-hint">允许上传的最大文件大小（默认100MB）</div>
                 </div>
 
+                <!-- 七牛云配置 -->
+                <div id="qiniuConfigSection" style="border-top: 2px solid #f3f4f6; padding-top: 20px; margin-top: 20px;">
+                    <h3 style="margin-bottom: 15px; color: #1f2937; font-size: 1.1em;">☁️ 七牛云配置</h3>
+                    <div class="form-hint" style="margin-bottom: 15px; color: #6b7280;">
+                        使用七牛云或混合模式时需要配置以下信息
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Access Key</label>
+                        <input type="text" id="qiniuAccessKey" class="form-input" placeholder="请输入七牛云 Access Key">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Secret Key</label>
+                        <input type="password" id="qiniuSecretKey" class="form-input" placeholder="请输入七牛云 Secret Key">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">存储空间名称 (Bucket)</label>
+                        <input type="text" id="qiniuBucket" class="form-input" placeholder="请输入 Bucket 名称">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">CDN 域名</label>
+                        <input type="text" id="qiniuDomain" class="form-input" placeholder="http://your-cdn-domain.com">
+                        <div class="form-hint">七牛云绑定的CDN域名，用于访问文件</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">存储区域</label>
+                        <select id="qiniuZone" class="form-select">
+                            <option value="Zone_z0">华东 (Zone_z0)</option>
+                            <option value="Zone_z1">华北 (Zone_z1)</option>
+                            <option value="Zone_z2">华南 (Zone_z2)</option>
+                            <option value="Zone_na0">北美 (Zone_na0)</option>
+                            <option value="Zone_as0">东南亚 (Zone_as0)</option>
+                        </select>
+                    </div>
+                </div>
+
                 <div class="btn-group">
                     <button class="btn btn-primary" onclick="loadConfig()">🔄 重新加载</button>
                     <button class="btn btn-success" onclick="saveConfig()">💾 保存配置</button>
@@ -453,6 +493,23 @@
                     document.getElementById('backupThreshold').value = config.backupThreshold;
                     document.getElementById('maxFileSize').value = config.maxFileSize;
                     
+                    // 更新七牛云配置（显示隐藏的密钥）
+                    if (config.qiniuAccessKey && config.qiniuAccessKey.startsWith('***')) {
+                        document.getElementById('qiniuAccessKey').placeholder = config.qiniuAccessKey;
+                    } else {
+                        document.getElementById('qiniuAccessKey').value = config.qiniuAccessKey || '';
+                    }
+                    
+                    if (config.qiniuSecretKey && config.qiniuSecretKey.startsWith('***')) {
+                        document.getElementById('qiniuSecretKey').placeholder = config.qiniuSecretKey;
+                    } else {
+                        document.getElementById('qiniuSecretKey').value = config.qiniuSecretKey || '';
+                    }
+                    
+                    document.getElementById('qiniuBucket').value = config.qiniuBucket || '';
+                    document.getElementById('qiniuDomain').value = config.qiniuDomain || '';
+                    document.getElementById('qiniuZone').value = config.qiniuZone || 'Zone_z2';
+                    
                     // 显示当前配置
                     document.getElementById('currentConfig').innerHTML = `
                         <div class="metric-row">
@@ -500,6 +557,28 @@
                 backupThreshold: parseInt(document.getElementById('backupThreshold').value),
                 maxFileSize: parseInt(document.getElementById('maxFileSize').value)
             };
+
+            // 添加七牛云配置（如果有填写）
+            const qiniuAccessKey = document.getElementById('qiniuAccessKey').value;
+            const qiniuSecretKey = document.getElementById('qiniuSecretKey').value;
+            const qiniuBucket = document.getElementById('qiniuBucket').value;
+            const qiniuDomain = document.getElementById('qiniuDomain').value;
+            const qiniuZone = document.getElementById('qiniuZone').value;
+
+            if (qiniuAccessKey) config.qiniuAccessKey = qiniuAccessKey;
+            if (qiniuSecretKey) config.qiniuSecretKey = qiniuSecretKey;
+            if (qiniuBucket) config.qiniuBucket = qiniuBucket;
+            if (qiniuDomain) config.qiniuDomain = qiniuDomain;
+            if (qiniuZone) config.qiniuZone = qiniuZone;
+
+            // 验证：如果使用七牛云或混合模式，必须填写七牛云配置
+            if ((config.storageType === 'qiniu' || config.storageType === 'hybrid')) {
+                if (!qiniuAccessKey || !qiniuSecretKey || !qiniuBucket || !qiniuDomain) {
+                    showMessage('使用七牛云或混合模式时，必须填写完整的七牛云配置', 'error');
+                    log('✗ 七牛云配置不完整', 'error');
+                    return;
+                }
+            }
 
             if (!config.storageType || !config.backupThreshold || !config.maxFileSize) {
                 showMessage('请填写所有必填字段', 'error');

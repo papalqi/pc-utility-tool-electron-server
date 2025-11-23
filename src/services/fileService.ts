@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import qiniu from 'qiniu';
 import { FileMetadata } from '../types';
 import { logger } from '../utils/logger';
 import { config } from '../config';
@@ -24,8 +25,32 @@ class FileService {
    */
   async initialize(): Promise<void> {
     await this.ensureUploadDirectory();
+    await this.ensureDataDirectory();
     await this.loadMetadata();
-    log.info('File service initialized');
+    
+    const storageType = config.upload.storageType;
+    log.info(`File service initialized with ${storageType} storage mode`);
+    
+    if (storageType === 'qiniu' || storageType === 'hybrid') {
+      if (!config.qiniu.accessKey || !config.qiniu.secretKey) {
+        log.warn('Qiniu credentials not configured, falling back to local storage');
+      } else {
+        log.info('Qiniu cloud storage configured');
+      }
+    }
+  }
+
+  /**
+   * Ensure data directory exists
+   */
+  private async ensureDataDirectory(): Promise<void> {
+    const dataDir = path.dirname(this.metadataFile);
+    try {
+      await fs.access(dataDir);
+    } catch {
+      await fs.mkdir(dataDir, { recursive: true });
+      log.info('Created data directory');
+    }
   }
 
   /**
@@ -95,7 +120,60 @@ class FileService {
   }
 
   /**
-   * Save file metadata
+   * Upload file to Qiniu Cloud Storage
+   */
+  private async uploadToQiniu(localPath: string, userId: string, filename: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      try {
+        const mac = new qiniu.auth.digest.Mac(config.qiniu.accessKey, config.qiniu.secretKey);
+        const options = {
+          scope: config.qiniu.bucket,
+        };
+        const putPolicy = new qiniu.rs.PutPolicy(options);
+        const uploadToken = putPolicy.uploadToken(mac);
+
+        const qiniuConfig = new qiniu.conf.Config();
+        // @ts-expect-error - Zone configuration
+        qiniuConfig.zone = qiniu.zone[config.qiniu.zone];
+
+        const formUploader = new qiniu.form_up.FormUploader(qiniuConfig);
+        const putExtra = new qiniu.form_up.PutExtra();
+
+        // 使用用户ID作为目录前缀
+        const key = `${userId}/${filename}`;
+
+        formUploader.putFile(uploadToken, key, localPath, putExtra, (err, body, info) => {
+          if (err) {
+            log.error('Qiniu upload failed', err);
+            reject(err);
+            return;
+          }
+
+          if (info.statusCode === 200) {
+            log.info(`File uploaded to Qiniu: ${key}`);
+            resolve(key);
+          } else {
+            log.error(`Qiniu upload failed with status ${info.statusCode}`, body);
+            reject(new Error(`Upload failed: ${info.statusCode}`));
+          }
+        });
+      } catch (error) {
+        log.error('Qiniu upload error', error);
+        reject(error);
+      }
+    });
+  }
+
+  /**
+   * Get file URL from Qiniu
+   */
+  private getQiniuUrl(key: string): string {
+    const domain = config.qiniu.domain.replace(/\/$/, ''); // 移除结尾斜杠
+    return `${domain}/${key}`;
+  }
+
+  /**
+   * Save file metadata and upload based on storage strategy
    */
   async saveFile(
     userId: string,
@@ -106,21 +184,52 @@ class FileService {
   ): Promise<FileMetadata> {
     await this.ensureUserDirectory(userId);
 
+    const localPath = path.join(this.getUserDirectory(userId), filename);
+    const storageType = config.upload.storageType;
+    
+    let cloudUrl: string | undefined;
+    let shouldUploadToCloud = false;
+
+    // 根据存储策略决定是否上传到七牛云
+    if (storageType === 'qiniu') {
+      // 纯七牛云模式：直接上传
+      shouldUploadToCloud = true;
+    } else if (storageType === 'hybrid') {
+      // 混合模式：大文件才上传到云
+      shouldUploadToCloud = size >= config.upload.backupThreshold;
+    }
+
+    // 如果需要上传到七牛云
+    if (shouldUploadToCloud && config.qiniu.accessKey && config.qiniu.secretKey) {
+      try {
+        const qiniuKey = await this.uploadToQiniu(localPath, userId, filename);
+        cloudUrl = this.getQiniuUrl(qiniuKey);
+        log.info(`File uploaded to Qiniu: ${originalName} (${size} bytes)`);
+      } catch (error) {
+        log.error(`Failed to upload to Qiniu, keeping local copy only`, error);
+      }
+    }
+
     const metadata: FileMetadata = {
       id: uuidv4(),
       originalName,
       filename,
-      path: path.join(this.getUserDirectory(userId), filename),
+      path: localPath,
       size,
       mimetype,
       userId,
       uploadedAt: new Date(),
+      cloudUrl, // 云存储URL（如果有）
     };
 
     this.files.set(metadata.id, metadata);
     await this.saveMetadata();
 
-    log.info(`File saved: ${originalName} for user ${userId}`);
+    const storageInfo = cloudUrl 
+      ? `(local + cloud: ${cloudUrl})` 
+      : `(local only)`;
+    log.info(`File saved: ${originalName} for user ${userId} ${storageInfo}`);
+    
     return metadata;
   }
 

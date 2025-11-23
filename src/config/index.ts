@@ -23,6 +23,17 @@ export const config = {
   upload: {
     dir: process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads'),
     maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '104857600', 10), // 100MB default
+    storageType: (process.env.STORAGE_TYPE || 'local') as 'local' | 'qiniu' | 'hybrid',
+    backupThreshold: parseInt(process.env.BACKUP_THRESHOLD || '10485760', 10), // 10MB default for hybrid mode
+  },
+
+  // Qiniu Cloud Storage
+  qiniu: {
+    accessKey: process.env.QINIU_ACCESS_KEY || '',
+    secretKey: process.env.QINIU_SECRET_KEY || '',
+    bucket: process.env.QINIU_BUCKET || '',
+    domain: process.env.QINIU_DOMAIN || '',
+    zone: process.env.QINIU_ZONE || 'Zone_z2',
   },
 
   // Admin user
@@ -55,6 +66,22 @@ export function validateConfig(): void {
     }
     if (config.admin.password === 'admin123') {
       errors.push('ADMIN_PASSWORD must be changed in production');
+    }
+  }
+
+  // Validate Qiniu configuration if using qiniu or hybrid storage
+  if (config.upload.storageType === 'qiniu' || config.upload.storageType === 'hybrid') {
+    if (!config.qiniu.accessKey) {
+      errors.push('QINIU_ACCESS_KEY is required when using qiniu or hybrid storage');
+    }
+    if (!config.qiniu.secretKey) {
+      errors.push('QINIU_SECRET_KEY is required when using qiniu or hybrid storage');
+    }
+    if (!config.qiniu.bucket) {
+      errors.push('QINIU_BUCKET is required when using qiniu or hybrid storage');
+    }
+    if (!config.qiniu.domain) {
+      errors.push('QINIU_DOMAIN is required when using qiniu or hybrid storage');
     }
   }
 
