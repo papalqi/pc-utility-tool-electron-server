@@ -11,6 +11,7 @@ import { fileService } from './services/fileService';
 import authRoutes from './routes/auth';
 import fileRoutes from './routes/files';
 import statusRoutes from './routes/status';
+import settingsRoutes from './routes/settings';
 
 const log = logger.createScope('Server');
 
@@ -84,6 +85,7 @@ async function initializeServer() {
     // API routes
     app.use('/api/auth', authRoutes);
     app.use('/api/files', fileRoutes);
+    app.use('/api/settings', settingsRoutes);
     
     // Status monitoring routes
     app.use(statusRoutes);
