@@ -80,8 +80,9 @@ export function validateConfig(): void {
     if (!config.qiniu.bucket) {
       errors.push('QINIU_BUCKET is required when using qiniu or hybrid storage');
     }
+    // Domain is optional - warn but don't error
     if (!config.qiniu.domain) {
-      errors.push('QINIU_DOMAIN is required when using qiniu or hybrid storage');
+      console.warn('⚠️ QINIU_DOMAIN not set - files will not be accessible via CDN');
     }
   }
 

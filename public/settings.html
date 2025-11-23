@@ -275,11 +275,11 @@
             </div>
             <div class="form-group">
                 <label class="form-label">用户名</label>
-                <input type="text" id="username" class="form-input" value="admin" placeholder="请输入用户名">
+                <input type="text" id="username" class="form-input" placeholder="请输入用户名" autocomplete="username">
             </div>
             <div class="form-group">
                 <label class="form-label">密码</label>
-                <input type="password" id="password" class="form-input" value="admin123" placeholder="请输入密码">
+                <input type="password" id="password" class="form-input" placeholder="请输入密码" autocomplete="current-password">
             </div>
             <button class="btn btn-primary" style="width: 100%;" onclick="login()">登录</button>
             <div id="loginMessage"></div>
@@ -355,9 +355,12 @@
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">CDN 域名</label>
+                        <label class="form-label">CDN 域名 (可选)</label>
                         <input type="text" id="qiniuDomain" class="form-input" placeholder="http://your-cdn-domain.com">
-                        <div class="form-hint">七牛云绑定的CDN域名，用于访问文件</div>
+                        <div class="form-hint">
+                            七牛云绑定的CDN域名，用于访问文件<br>
+                            <strong>可选</strong>：不填写则文件仅从本地访问，无CDN加速
+                        </div>
                     </div>
 
                     <div class="form-group">
@@ -573,10 +576,13 @@
 
             // 验证：如果使用七牛云或混合模式，必须填写七牛云配置
             if ((config.storageType === 'qiniu' || config.storageType === 'hybrid')) {
-                if (!qiniuAccessKey || !qiniuSecretKey || !qiniuBucket || !qiniuDomain) {
-                    showMessage('使用七牛云或混合模式时，必须填写完整的七牛云配置', 'error');
+                if (!qiniuAccessKey || !qiniuSecretKey || !qiniuBucket) {
+                    showMessage('使用七牛云或混合模式时，必须填写 AccessKey、SecretKey 和 Bucket', 'error');
                     log('✗ 七牛云配置不完整', 'error');
                     return;
+                }
+                if (!qiniuDomain) {
+                    log('⚠️ 未填写CDN域名，文件将只能从本地访问', 'warning');
                 }
             }
 
@@ -599,9 +605,10 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    showMessage('✓ ' + data.message, 'success');
-                    log('✓ 配置保存成功', 'success');
-                    log('⚠️ 建议重启服务器使配置完全生效', 'warning');
+                    showMessage('✅ 配置已保存到 .env 文件！点击"重启服务器"使配置生效', 'success');
+                    log('✓ 配置保存成功（已写入 .env 文件）', 'success');
+                    log('📁 保存位置：项目根目录/.env', 'info');
+                    log('⚠️ 重要：点击"重启服务器"按钮使配置完全生效', 'warning');
                     loadConfig(); // 重新加载显示
                 } else {
                     showMessage('✗ 保存失败: ' + data.error, 'error');
