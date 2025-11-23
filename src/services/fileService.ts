@@ -168,8 +168,60 @@ class FileService {
    * Get file URL from Qiniu
    */
   private getQiniuUrl(key: string): string {
-    const domain = config.qiniu.domain.replace(/\/$/, ''); // 移除结尾斜杠
-    return `${domain}/${key}`;
+    // 如果配置了CDN域名，使用CDN域名
+    if (config.qiniu.domain) {
+      const domain = config.qiniu.domain.replace(/\/$/, ''); // 移除结尾斜杠
+      return `${domain}/${key}`;
+    }
+    
+    // 如果没有配置CDN域名，返回key路径
+    // 服务器将通过代理方式提供访问
+    return `/${key}`;
+  }
+
+  /**
+   * Get direct Qiniu access URL (for proxy download)
+   * 构建七牛云直接访问URL，即使没有CDN域名也能访问
+   */
+  getQiniuDirectUrl(cloudUrl: string): string | null {
+    // 如果已经是完整URL，直接返回
+    if (cloudUrl.startsWith('http://') || cloudUrl.startsWith('https://')) {
+      return cloudUrl;
+    }
+
+    // 如果配置了域名，构建完整URL
+    if (config.qiniu.domain) {
+      const domain = config.qiniu.domain.replace(/\/$/, '');
+      const key = cloudUrl.startsWith('/') ? cloudUrl.substring(1) : cloudUrl;
+      return `${domain}/${key}`;
+    }
+
+    // 使用七牛云的默认源站域名
+    // 格式: http://{bucket}.{zone-id}.qiniucs.com/{key}
+    const bucket = config.qiniu.bucket;
+    const zone = this.getQiniuZoneId(config.qiniu.zone);
+    const key = cloudUrl.startsWith('/') ? cloudUrl.substring(1) : cloudUrl;
+    
+    if (bucket && zone) {
+      return `http://${bucket}.${zone}.qiniucs.com/${key}`;
+    }
+
+    log.warn('Unable to construct Qiniu URL: missing configuration');
+    return null;
+  }
+
+  /**
+   * Get Qiniu zone ID from zone name
+   */
+  private getQiniuZoneId(zoneName: string): string {
+    const zoneMap: Record<string, string> = {
+      'Zone_z0': 'z0',      // 华东-浙江
+      'Zone_z1': 'z1',      // 华北-河北
+      'Zone_z2': 'z2',      // 华南-广东
+      'Zone_na0': 'na0',    // 北美
+      'Zone_as0': 'as0',    // 东南亚
+    };
+    return zoneMap[zoneName] || 'z2';
   }
 
   /**
@@ -293,5 +345,6 @@ class FileService {
     return Array.from(this.files.values());
   }
 }
+
 
 export const fileService = new FileService();

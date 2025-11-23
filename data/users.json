@@ -5,5 +5,12 @@
     "password": "$2a$10$7FeYm50yS8ipEqyKXbDTV.6rfIEhQW1U0OfBUCuw4arqzpZGmYeAi",
     "createdAt": "2025-11-22T13:55:30.433Z",
     "updatedAt": "2025-11-22T13:55:30.433Z"
+  },
+  {
+    "id": "f904e5ec-5dbd-4b0c-bd42-45387d3d2d39",
+    "username": "test_qiniu_user",
+    "password": "$2a$10$/BtThx/cWg3B6YLNTELNyu6xva0m3B64H2SpI.irqvnkrIwMwaulK",
+    "createdAt": "2025-11-23T06:24:47.112Z",
+    "updatedAt": "2025-11-23T06:24:47.112Z"
   }
 ]
