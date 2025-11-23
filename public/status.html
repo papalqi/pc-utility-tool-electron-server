@@ -35,6 +35,27 @@
             text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
         }
 
+        .nav {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 15px;
+        }
+
+        .nav a {
+            color: white;
+            text-decoration: none;
+            padding: 10px 20px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 8px;
+            transition: background 0.2s;
+            font-weight: 500;
+        }
+
+        .nav a:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
         .status-badge {
             display: inline-block;
             padding: 8px 20px;
@@ -190,6 +211,11 @@
             <h1>🖥️ 服务器状态监控</h1>
             <div class="status-badge" id="statusBadge">● 运行中</div>
             <div class="last-update">最后更新: <span id="lastUpdate">-</span></div>
+        </div>
+
+        <div class="nav">
+            <a href="/status">📊 状态监控</a>
+            <a href="/settings.html">⚙️ 设置管理</a>
         </div>
 
         <div id="content">
