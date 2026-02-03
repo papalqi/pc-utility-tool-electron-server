@@ -129,9 +129,9 @@ async function initializeServer() {
     });
 
     // Start server
-    app.listen(config.port, '0.0.0.0', () => {
+    app.listen(config.port, config.bindHost, () => {
       log.info(`Server running on port ${config.port}`);
-      log.info(`Listening on 0.0.0.0:${config.port}`);
+      log.info(`Listening on ${config.bindHost}:${config.port}`);
       log.info(`Environment: ${config.nodeEnv}`);
       log.info(`Upload directory: ${config.upload.dir}`);
       log.info(`Max file size: ${config.upload.maxFileSize} bytes`);
