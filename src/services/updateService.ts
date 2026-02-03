@@ -94,11 +94,26 @@ async function fetchLatestRelease(owner: string, repo: string, token?: string): 
   const url = `https://api.github.com/repos/${owner}/${repo}/releases/latest`;
   const res = await fetch(url, { headers: buildGitHubHeaders(token) });
   if (!res.ok) {
+    let details = '';
+    try {
+      const text = await res.text();
+      if (text) {
+        details = ` (${text.slice(0, 200)})`;
+      }
+    } catch {
+      // ignore
+    }
+
     const hint =
       res.status === 404 && !token
         ? ' (hint: repo may be private; set GITHUB_UPDATES_TOKEN)'
-        : '';
-    throw new Error(`Failed to fetch latest release: ${res.status} ${res.statusText}${hint}`);
+        : res.status === 401
+          ? ' (hint: bad credentials; check GITHUB_UPDATES_TOKEN)'
+          : res.status === 403
+            ? ' (hint: forbidden; check token permissions or rate limit)'
+            : '';
+
+    throw new Error(`Failed to fetch latest release: ${res.status} ${res.statusText}${hint}${details}`);
   }
   const json = (await res.json()) as Partial<GitHubRelease>;
 
