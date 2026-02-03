@@ -139,12 +139,19 @@ router.post('/sync', async (req: AuthRequest, res: Response<ApiResponse>) => {
       return;
     }
 
-    const result = await updateService.syncFromGitHubLatestRelease();
+    // Run sync in background to avoid client/proxy timeouts on large artifacts.
+    void updateService
+      .syncFromGitHubLatestRelease()
+      .then((result) => {
+        log.info('Updates sync completed', { tag: result.source.tag, downloaded: result.downloaded.length });
+      })
+      .catch((error) => {
+        log.error('Updates sync failed', error);
+      });
 
-    res.json({
+    res.status(202).json({
       success: true,
-      data: result,
-      message: `Synced from GitHub release ${result.source.tag}`,
+      message: 'Sync started',
     });
   } catch (error) {
     log.error('Failed to sync updates from GitHub', error);
