@@ -23,6 +23,32 @@ interface GitHubRelease {
   assets: GitHubReleaseAsset[];
 }
 
+function assetPriority(filename: string): number {
+  const lower = filename.toLowerCase();
+
+  // Always fetch manifests first so clients can start checking updates quickly.
+  if (
+    (lower === 'latest.yml' || lower === 'latest-mac.yml' || lower === 'latest-linux.yml') &&
+    lower.endsWith('.yml')
+  ) {
+    return 0;
+  }
+
+  // Blockmaps are small and help differential updates.
+  if (lower.endsWith('.blockmap')) return 1;
+
+  // Common platforms next.
+  if (lower.endsWith('.exe')) return 2;
+  if (lower.endsWith('.zip')) return 3;
+  if (lower.endsWith('.dmg')) return 4;
+
+  // Linux artifacts.
+  if (lower.endsWith('.deb')) return 5;
+  if (lower.endsWith('.appimage')) return 6;
+
+  return 10;
+}
+
 export interface UpdateSyncResult {
   source: {
     provider: 'github';
@@ -210,7 +236,18 @@ class UpdateService {
       const downloaded: UpdateSyncResult['downloaded'] = [];
       const skipped: UpdateSyncResult['skipped'] = [];
 
-      for (const asset of release.assets) {
+      const sortedAssets = [...release.assets].sort((a, b) => {
+        const aName = a?.name || '';
+        const bName = b?.name || '';
+        const pa = assetPriority(aName);
+        const pb = assetPriority(bName);
+        if (pa !== pb) return pa - pb;
+        const sa = Number.isFinite(a?.size) ? a.size : Number.POSITIVE_INFINITY;
+        const sb = Number.isFinite(b?.size) ? b.size : Number.POSITIVE_INFINITY;
+        return sa - sb;
+      });
+
+      for (const asset of sortedAssets) {
         const filename = asset?.name;
         const assetId = asset?.id;
         const downloadUrl = asset?.browser_download_url;
