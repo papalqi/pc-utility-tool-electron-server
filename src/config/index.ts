@@ -25,6 +25,23 @@ export const config = {
     maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '104857600', 10), // 100MB default
   },
 
+  // Auto-update artifacts (electron-updater generic provider)
+  updates: {
+    dir: process.env.UPDATES_DIR || path.join(process.cwd(), 'updates'),
+    maxFileSize: parseInt(process.env.MAX_UPDATE_FILE_SIZE || process.env.MAX_FILE_SIZE || '104857600', 10),
+  },
+
+  // GitHub release sync for updates
+  githubUpdates: {
+    owner: process.env.GITHUB_UPDATES_OWNER || 'papalqi',
+    repo: process.env.GITHUB_UPDATES_REPO || 'utility-tool',
+    token: process.env.GITHUB_UPDATES_TOKEN || '',
+  },
+
+  githubWebhook: {
+    secret: process.env.GITHUB_WEBHOOK_SECRET || '',
+  },
+
   // Admin user
   admin: {
     username: process.env.ADMIN_USERNAME || 'admin',

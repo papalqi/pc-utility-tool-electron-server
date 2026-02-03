@@ -4,6 +4,7 @@ import cors from 'cors';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import path from 'path';
+import fs from 'fs/promises';
 import { config, validateConfig } from './config';
 import { logger } from './utils/logger';
 import { userService } from './services/userService';
@@ -12,6 +13,8 @@ import authRoutes from './routes/auth';
 import fileRoutes from './routes/files';
 import statusRoutes from './routes/status';
 import settingsRoutes from './routes/settings';
+import updatesRoutes from './routes/updates';
+import webhooksRoutes from './routes/webhooks';
 
 const log = logger.createScope('Server');
 
@@ -27,6 +30,8 @@ async function initializeServer() {
     // Initialize services
     await userService.initialize();
     await fileService.initialize();
+    await fs.mkdir(config.updates.dir, { recursive: true });
+    log.info(`Updates directory ensured: ${config.updates.dir}`);
 
     // Create admin user if not exists
     const adminExists = await userService.findByUsername(config.admin.username);
@@ -67,11 +72,26 @@ async function initializeServer() {
 
     // Body parsing and compression
     app.use(compression());
+
+    // Webhooks need raw body for signature verification
+    app.use('/api/webhooks', express.raw({ type: 'application/json' }), webhooksRoutes);
+
     app.use(express.json());
     app.use(express.urlencoded({ extended: true }));
 
     // Static files for status page
     app.use(express.static(path.join(process.cwd(), 'public')));
+    // Static files for electron-updater (generic provider)
+    app.use(
+      '/updates',
+      express.static(config.updates.dir, {
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith('.yml') || filePath.endsWith('.yaml')) {
+            res.setHeader('Cache-Control', 'no-cache');
+          }
+        },
+      })
+    );
 
     // Health check endpoint
     app.get('/health', (_req, res) => {
@@ -86,6 +106,7 @@ async function initializeServer() {
     app.use('/api/auth', authRoutes);
     app.use('/api/files', fileRoutes);
     app.use('/api/settings', settingsRoutes);
+    app.use('/api/updates', updatesRoutes);
     
     // Status monitoring routes
     app.use(statusRoutes);

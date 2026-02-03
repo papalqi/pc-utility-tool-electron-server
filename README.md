@@ -426,6 +426,48 @@ Get server status in JSON format.
 }
 ```
 
+## Auto Update Hosting (electron-updater)
+
+This server can host Electron auto-update artifacts (for `electron-updater` **generic** provider).
+
+### Public endpoints
+
+Place build artifacts in `UPDATES_DIR` (default `./updates`), then expose them via:
+
+- `GET /updates/latest.yml` (Windows/Linux)
+- `GET /updates/latest-mac.yml` (macOS)
+- `GET /updates/<artifact>` (e.g. `.exe`, `.zip`, `.blockmap`, ...)
+
+### Admin API
+
+Upload artifacts via admin authentication:
+
+- `GET /api/updates` (list artifacts)
+- `POST /api/updates/upload` (multipart, field name: `files`)
+- `POST /api/updates/sync` (pull latest GitHub Release assets into `UPDATES_DIR`)
+
+### GitHub Webhook (recommended)
+
+You can configure a GitHub webhook to trigger syncing automatically when a release is published.
+
+- URL: `POST /api/webhooks/github`
+- Content type: `application/json`
+- Secret: `GITHUB_WEBHOOK_SECRET`
+- Events: **Release** (recommended)
+
+When receiving a `release` event with action `published`/`released`, the server will start a background sync and respond `202`.
+
+### Environment variables
+
+```env
+UPDATES_DIR=./updates
+MAX_UPDATE_FILE_SIZE=524288000
+GITHUB_UPDATES_OWNER=papalqi
+GITHUB_UPDATES_REPO=utility-tool
+GITHUB_UPDATES_TOKEN=
+GITHUB_WEBHOOK_SECRET=
+```
+
 ## Client Integration Examples
 
 ### JavaScript/TypeScript
