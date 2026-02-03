@@ -144,11 +144,30 @@ async function downloadFile(url: string, destPath: string, token?: string): Prom
   const tempPath = `${destPath}.part`;
 
   await ensureDir(path.dirname(destPath));
-  await fs.rm(tempPath, { force: true });
+  let existingSize = 0;
+  try {
+    const stat = await fs.stat(tempPath);
+    existingSize = stat.size;
+  } catch {
+    existingSize = 0;
+  }
 
-  const res = await fetch(url, {
-    headers: buildGitHubHeaders(token),
+  const headers = buildGitHubHeaders(token);
+  if (existingSize > 0) {
+    headers.Range = `bytes=${existingSize}-`;
+  }
+
+  let res = await fetch(url, {
+    headers,
+    redirect: 'follow',
   });
+
+  // If server didn't honor range request, restart the download from scratch.
+  if (existingSize > 0 && res.ok && res.status === 200) {
+    await fs.rm(tempPath, { force: true });
+    existingSize = 0;
+    res = await fetch(url, { headers: buildGitHubHeaders(token), redirect: 'follow' });
+  }
 
   if (!res.ok) {
     throw new Error(`Download failed: ${res.status} ${res.statusText}`);
@@ -159,7 +178,10 @@ async function downloadFile(url: string, destPath: string, token?: string): Prom
   }
 
   const nodeStream = Readable.fromWeb(res.body as unknown as ReadableStream);
-  await pipeline(nodeStream, fssync.createWriteStream(tempPath));
+  const writeStream = fssync.createWriteStream(tempPath, {
+    flags: existingSize > 0 && res.status === 206 ? 'a' : 'w',
+  });
+  await pipeline(nodeStream, writeStream);
 
   await fs.rm(destPath, { force: true });
   await fs.rename(tempPath, destPath);
@@ -179,12 +201,27 @@ async function downloadReleaseAsset(
   const tempPath = `${destPath}.part`;
 
   await ensureDir(path.dirname(destPath));
-  await fs.rm(tempPath, { force: true });
+  let existingSize = 0;
+  try {
+    const stat = await fs.stat(tempPath);
+    existingSize = stat.size;
+  } catch {
+    existingSize = 0;
+  }
 
-  const res = await fetch(apiUrl, {
-    headers: buildGitHubAssetDownloadHeaders(token),
-    redirect: 'follow',
-  });
+  const headers = buildGitHubAssetDownloadHeaders(token);
+  if (existingSize > 0) {
+    headers.Range = `bytes=${existingSize}-`;
+  }
+
+  let res = await fetch(apiUrl, { headers, redirect: 'follow' });
+
+  // If server didn't honor range request, restart the download from scratch.
+  if (existingSize > 0 && res.ok && res.status === 200) {
+    await fs.rm(tempPath, { force: true });
+    existingSize = 0;
+    res = await fetch(apiUrl, { headers: buildGitHubAssetDownloadHeaders(token), redirect: 'follow' });
+  }
 
   if (!res.ok) {
     throw new Error(`Download failed: ${res.status} ${res.statusText}`);
@@ -195,7 +232,10 @@ async function downloadReleaseAsset(
   }
 
   const nodeStream = Readable.fromWeb(res.body as unknown as ReadableStream);
-  await pipeline(nodeStream, fssync.createWriteStream(tempPath));
+  const writeStream = fssync.createWriteStream(tempPath, {
+    flags: existingSize > 0 && res.status === 206 ? 'a' : 'w',
+  });
+  await pipeline(nodeStream, writeStream);
 
   await fs.rm(destPath, { force: true });
   await fs.rename(tempPath, destPath);
