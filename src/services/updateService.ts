@@ -61,7 +61,7 @@ function parseUpdateYamlUrls(yamlText: string): string[] {
 function assetPriority(filename: string): number {
   const lower = filename.toLowerCase();
 
-  // Always fetch manifests first so clients can start checking updates quickly.
+  // Manifests are small and cheap to download.
   if (
     (lower === 'latest.yml' || lower === 'latest-mac.yml' || lower === 'latest-linux.yml') &&
     lower.endsWith('.yml')
@@ -82,6 +82,11 @@ function assetPriority(filename: string): number {
   if (lower.endsWith('.appimage')) return 6;
 
   return 10;
+}
+
+function isUpdateManifest(filename: string): boolean {
+  const lower = filename.toLowerCase();
+  return lower === 'latest.yml' || lower === 'latest-mac.yml' || lower === 'latest-linux.yml';
 }
 
 export interface UpdateSyncResult {
@@ -137,6 +142,28 @@ async function fileExists(filePath: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+async function moveFileReplace(srcPath: string, destPath: string): Promise<void> {
+  await ensureDir(path.dirname(destPath));
+
+  try {
+    await fs.rm(destPath, { force: true });
+  } catch {
+    // ignore
+  }
+
+  try {
+    await fs.rename(srcPath, destPath);
+  } catch (error) {
+    // Cross-device rename fallback
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'EXDEV') {
+      await fs.copyFile(srcPath, destPath);
+      await fs.rm(srcPath, { force: true });
+      return;
+    }
+    throw error;
   }
 }
 
@@ -308,6 +335,8 @@ class UpdateService {
 
       log.info('Fetching latest GitHub release for updates', { owner, repo });
       const release = await fetchLatestRelease(owner, repo, token);
+      const stagingDir = path.join(updatesDir, '.staging', release.tag_name);
+      await ensureDir(stagingDir);
 
       const downloaded: UpdateSyncResult['downloaded'] = [];
       const skipped: UpdateSyncResult['skipped'] = [];
@@ -322,25 +351,25 @@ class UpdateService {
           throw new Error('latest.yml is missing in GitHub release assets');
         }
 
-        const latestPath = path.join(updatesDir, 'latest.yml');
-        // Ensure latest.yml is present for parsing.
-        if (await fileExists(latestPath)) {
+        const latestStagePath = path.join(stagingDir, 'latest.yml');
+        // Ensure latest.yml is present for parsing (in staging). Do not publish it yet.
+        if (await fileExists(latestStagePath)) {
           try {
-            const stat = await fs.stat(latestPath);
+            const stat = await fs.stat(latestStagePath);
             if (Number.isFinite(latest.size) && stat.size !== latest.size) {
-              await fs.rm(latestPath, { force: true });
+              await fs.rm(latestStagePath, { force: true });
             }
           } catch {
             // ignore
           }
         }
-        if (!(await fileExists(latestPath))) {
-          log.info('Downloading update manifest', { filename: 'latest.yml' });
-          const actualSize = await downloadReleaseAsset(owner, repo, latest, latestPath, token);
-          downloaded.push({ filename: 'latest.yml', size: actualSize });
+        if (!(await fileExists(latestStagePath))) {
+          log.info('Downloading update manifest (staging)', { filename: 'latest.yml' });
+          const actualSize = await downloadReleaseAsset(owner, repo, latest, latestStagePath, token);
+          downloaded.push({ filename: 'latest.yml (staging)', size: actualSize });
         }
 
-        const latestContent = await fs.readFile(latestPath, 'utf-8');
+        const latestContent = await fs.readFile(latestStagePath, 'utf-8');
         const referenced = parseUpdateYamlUrls(latestContent);
         const allowNames = new Set<string>(['latest.yml']);
         for (const ref of referenced) {
@@ -373,6 +402,12 @@ class UpdateService {
         return sa - sb;
       });
 
+      const stagedToPromote: Array<{
+        filename: string;
+        stagedPath: string;
+        finalPath: string;
+      }> = [];
+
       for (const asset of sortedAssets) {
         const filename = asset?.name;
         const assetId = asset?.id;
@@ -383,12 +418,14 @@ class UpdateService {
           continue;
         }
 
-        const destPath = path.join(updatesDir, path.basename(filename));
+        const baseName = path.basename(filename);
+        const finalPath = path.join(updatesDir, baseName);
+        const stagedPath = path.join(stagingDir, baseName);
 
         // Idempotent: skip if file exists with same size
-        if (await fileExists(destPath)) {
+        if (await fileExists(finalPath)) {
           try {
-            const stat = await fs.stat(destPath);
+            const stat = await fs.stat(finalPath);
             if (Number.isFinite(expectedSize) && stat.size === expectedSize) {
               skipped.push({ filename, reason: 'already exists (same size)' });
               continue;
@@ -398,19 +435,62 @@ class UpdateService {
           }
         }
 
-        log.info('Downloading update asset', { filename });
+        // If a previous attempt already staged the full file, reuse it.
+        if (await fileExists(stagedPath)) {
+          try {
+            const stat = await fs.stat(stagedPath);
+            if (Number.isFinite(expectedSize) && stat.size === expectedSize) {
+              stagedToPromote.push({ filename: baseName, stagedPath, finalPath });
+              skipped.push({ filename, reason: 'already staged (same size)' });
+              continue;
+            }
+          } catch {
+            // fallthrough to download
+          }
+        }
+
+        log.info('Downloading update asset (staging)', { filename: baseName });
         let actualSize = 0;
         try {
           // Prefer GitHub API asset download for private repos.
-          actualSize = await downloadReleaseAsset(owner, repo, asset, destPath, token);
+          actualSize = await downloadReleaseAsset(owner, repo, asset, stagedPath, token);
         } catch (error) {
           log.warn('GitHub API asset download failed, fallback to browser_download_url', {
-            filename,
+            filename: baseName,
             error: error instanceof Error ? error.message : String(error),
           });
-          actualSize = await downloadFile(downloadUrl, destPath, token);
+          actualSize = await downloadFile(downloadUrl, stagedPath, token);
         }
-        downloaded.push({ filename: path.basename(filename), size: actualSize });
+
+        stagedToPromote.push({ filename: baseName, stagedPath, finalPath });
+        downloaded.push({ filename: baseName, size: actualSize });
+      }
+
+      // Publish: promote staged files into public updatesDir, keeping manifests last.
+      if (stagedToPromote.length > 0) {
+        const manifestFirst: typeof stagedToPromote = [];
+        const manifestLast: typeof stagedToPromote = [];
+
+        for (const item of stagedToPromote) {
+          if (isUpdateManifest(item.filename)) {
+            manifestLast.push(item);
+          } else {
+            manifestFirst.push(item);
+          }
+        }
+
+        const ordered = [...manifestFirst, ...manifestLast];
+        log.info('Promoting staged update assets', { count: ordered.length, tag: release.tag_name });
+        for (const item of ordered) {
+          await moveFileReplace(item.stagedPath, item.finalPath);
+        }
+
+        // Best-effort cleanup; keep staging if something goes wrong earlier for resume.
+        try {
+          await fs.rm(stagingDir, { recursive: true, force: true });
+        } catch {
+          // ignore
+        }
       }
 
       log.info('GitHub release sync completed', {

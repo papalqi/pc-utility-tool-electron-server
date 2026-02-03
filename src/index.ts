@@ -118,6 +118,7 @@ async function initializeServer() {
     app.use(
       '/updates',
       express.static(config.updates.dir, {
+        dotfiles: 'ignore',
         setHeaders: (res, filePath) => {
           if (filePath.endsWith('.yml') || filePath.endsWith('.yaml')) {
             res.setHeader('Cache-Control', 'no-cache');
