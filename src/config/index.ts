@@ -11,6 +11,17 @@ export const config = {
   // Server
   port: parseInt(process.env.PORT || '3000', 10),
   bindHost: process.env.BIND_HOST || '0.0.0.0',
+  /**
+   * Express trust proxy setting.
+   * When the server is reverse-proxied (e.g. Caddy/Nginx), enable this so middlewares
+   * like express-rate-limit can read the real client IP from X-Forwarded-For.
+   *
+   * Examples:
+   * - TRUST_PROXY=1
+   * - TRUST_PROXY=true
+   * - TRUST_PROXY=loopback
+   */
+  trustProxy: process.env.TRUST_PROXY,
   nodeEnv: process.env.NODE_ENV || 'development',
   isDevelopment: process.env.NODE_ENV !== 'production',
 
@@ -70,6 +81,9 @@ export function validateConfig(): void {
   if (config.nodeEnv === 'production') {
     if (config.jwt.secret === 'your-super-secret-jwt-key-change-this') {
       errors.push('JWT_SECRET must be set in production');
+    }
+    if (!config.admin.password) {
+      errors.push('ADMIN_PASSWORD must be set in production');
     }
     if (config.admin.password === 'admin123') {
       errors.push('ADMIN_PASSWORD must be changed in production');

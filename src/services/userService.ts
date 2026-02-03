@@ -132,6 +132,26 @@ class UserService {
   }
 
   /**
+   * Update user password (rehash and persist)
+   */
+  async updatePassword(userId: string, password: string): Promise<void> {
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const updated: User = {
+      ...user,
+      password: hashedPassword,
+      updatedAt: new Date(),
+    };
+
+    this.users.set(updated.id, updated);
+    await this.saveUsers();
+  }
+
+  /**
    * Convert User to UserPublic (remove sensitive data)
    */
   toPublic(user: User): UserPublic {

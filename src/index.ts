@@ -18,6 +18,25 @@ import webhooksRoutes from './routes/webhooks';
 
 const log = logger.createScope('Server');
 
+function parseTrustProxySetting(raw: string | undefined): boolean | number | string | undefined {
+  if (!raw) return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+
+  if (trimmed === 'true') return true;
+  if (trimmed === 'false') return false;
+
+  const asNumber = Number(trimmed);
+  if (Number.isFinite(asNumber)) return asNumber;
+
+  return trimmed;
+}
+
+function isLoopbackHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase();
+  return normalized === '127.0.0.1' || normalized === '::1' || normalized === 'localhost';
+}
+
 /**
  * Initialize server
  */
@@ -44,10 +63,24 @@ async function initializeServer() {
       if (config.isDevelopment) {
         log.warn(`Default admin password is in use. Please change it!`);
       }
+    } else {
+      const matches = await userService.verifyPassword(adminExists, config.admin.password);
+      if (!matches) {
+        await userService.updatePassword(adminExists.id, config.admin.password);
+        log.warn(`Admin password updated from environment: ${config.admin.username}`);
+      }
     }
 
     // Create Express app
     const app = express();
+
+    // Trust reverse proxy headers when configured / inferred.
+    // This avoids express-rate-limit throwing ERR_ERL_UNEXPECTED_X_FORWARDED_FOR behind Caddy/Nginx.
+    const trustProxy =
+      parseTrustProxySetting(config.trustProxy) ??
+      (config.nodeEnv === 'production' && isLoopbackHost(config.bindHost) ? 1 : false);
+    app.set('trust proxy', trustProxy);
+    log.info('Express trust proxy configured', { trustProxy });
 
     // Security middleware
     // Temporarily disable helmet for debugging
