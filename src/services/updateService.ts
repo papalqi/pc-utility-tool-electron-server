@@ -94,7 +94,11 @@ async function fetchLatestRelease(owner: string, repo: string, token?: string): 
   const url = `https://api.github.com/repos/${owner}/${repo}/releases/latest`;
   const res = await fetch(url, { headers: buildGitHubHeaders(token) });
   if (!res.ok) {
-    throw new Error(`Failed to fetch latest release: ${res.status} ${res.statusText}`);
+    const hint =
+      res.status === 404 && !token
+        ? ' (hint: repo may be private; set GITHUB_UPDATES_TOKEN)'
+        : '';
+    throw new Error(`Failed to fetch latest release: ${res.status} ${res.statusText}${hint}`);
   }
   const json = (await res.json()) as Partial<GitHubRelease>;
 
@@ -198,4 +202,3 @@ class UpdateService {
 }
 
 export const updateService = new UpdateService();
-
