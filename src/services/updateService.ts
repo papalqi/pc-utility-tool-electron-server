@@ -9,6 +9,7 @@ import { logger } from '../utils/logger';
 const log = logger.createScope('UpdateService');
 
 interface GitHubReleaseAsset {
+  id: number;
   name: string;
   size: number;
   browser_download_url: string;
@@ -49,6 +50,22 @@ function buildGitHubHeaders(token?: string): Record<string, string> {
   return headers;
 }
 
+function buildGitHubAssetDownloadHeaders(token?: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    'User-Agent': 'pc-utility-tool-electron-server',
+    // Required by GitHub to download release assets via API:
+    // https://docs.github.com/rest/releases/assets?apiVersion=2022-11-28#get-a-release-asset
+    Accept: 'application/octet-stream',
+  };
+
+  const trimmed = token?.trim();
+  if (trimmed) {
+    headers.Authorization = `Bearer ${trimmed}`;
+  }
+
+  return headers;
+}
+
 async function ensureDir(dirPath: string): Promise<void> {
   await fs.mkdir(dirPath, { recursive: true });
 }
@@ -70,6 +87,42 @@ async function downloadFile(url: string, destPath: string, token?: string): Prom
 
   const res = await fetch(url, {
     headers: buildGitHubHeaders(token),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Download failed: ${res.status} ${res.statusText}`);
+  }
+
+  if (!res.body) {
+    throw new Error('Download failed: empty response body');
+  }
+
+  const nodeStream = Readable.fromWeb(res.body as unknown as ReadableStream);
+  await pipeline(nodeStream, fssync.createWriteStream(tempPath));
+
+  await fs.rm(destPath, { force: true });
+  await fs.rename(tempPath, destPath);
+
+  const stat = await fs.stat(destPath);
+  return stat.size;
+}
+
+async function downloadReleaseAsset(
+  owner: string,
+  repo: string,
+  asset: GitHubReleaseAsset,
+  destPath: string,
+  token?: string
+): Promise<number> {
+  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/releases/assets/${asset.id}`;
+  const tempPath = `${destPath}.part`;
+
+  await ensureDir(path.dirname(destPath));
+  await fs.rm(tempPath, { force: true });
+
+  const res = await fetch(apiUrl, {
+    headers: buildGitHubAssetDownloadHeaders(token),
+    redirect: 'follow',
   });
 
   if (!res.ok) {
@@ -159,10 +212,11 @@ class UpdateService {
 
       for (const asset of release.assets) {
         const filename = asset?.name;
+        const assetId = asset?.id;
         const downloadUrl = asset?.browser_download_url;
         const expectedSize = asset?.size;
 
-        if (!filename || !downloadUrl) {
+        if (!filename || !downloadUrl || !assetId) {
           continue;
         }
 
@@ -182,7 +236,17 @@ class UpdateService {
         }
 
         log.info('Downloading update asset', { filename });
-        const actualSize = await downloadFile(downloadUrl, destPath, token);
+        let actualSize = 0;
+        try {
+          // Prefer GitHub API asset download for private repos.
+          actualSize = await downloadReleaseAsset(owner, repo, asset, destPath, token);
+        } catch (error) {
+          log.warn('GitHub API asset download failed, fallback to browser_download_url', {
+            filename,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          actualSize = await downloadFile(downloadUrl, destPath, token);
+        }
         downloaded.push({ filename: path.basename(filename), size: actualSize });
       }
 
