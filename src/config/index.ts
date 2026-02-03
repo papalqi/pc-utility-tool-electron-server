@@ -48,6 +48,7 @@ export const config = {
     owner: process.env.GITHUB_UPDATES_OWNER || 'papalqi',
     repo: process.env.GITHUB_UPDATES_REPO || 'utility-tool',
     token: process.env.GITHUB_UPDATES_TOKEN || '',
+    target: process.env.GITHUB_UPDATES_TARGET || 'all',
   },
 
   githubWebhook: {
@@ -94,5 +95,10 @@ export function validateConfig(): void {
     console.error('Configuration errors:');
     errors.forEach(error => console.error(`  - ${error}`));
     throw new Error('Invalid configuration');
+  }
+
+  const target = config.githubUpdates.target;
+  if (target !== 'all' && target !== 'windows') {
+    throw new Error(`Invalid GITHUB_UPDATES_TARGET: ${target} (expected: all | windows)`);
   }
 }

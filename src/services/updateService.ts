@@ -23,6 +23,41 @@ interface GitHubRelease {
   assets: GitHubReleaseAsset[];
 }
 
+function parseUpdateYamlUrls(yamlText: string): string[] {
+  const urls = new Set<string>();
+
+  for (const rawLine of yamlText.split('\n')) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+
+    const idx = line.indexOf(':');
+    if (idx <= 0) continue;
+
+    const key = line.slice(0, idx).trim();
+    if (key !== 'path' && key !== 'url') continue;
+
+    let value = line.slice(idx + 1).trim();
+    // strip inline comments
+    const hash = value.indexOf('#');
+    if (hash >= 0) {
+      value = value.slice(0, hash).trim();
+    }
+
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    if (value) {
+      urls.add(value);
+    }
+  }
+
+  return [...urls];
+}
+
 function assetPriority(filename: string): number {
   const lower = filename.toLowerCase();
 
@@ -223,6 +258,7 @@ class UpdateService {
       const repo = config.githubUpdates.repo;
       const token = config.githubUpdates.token || undefined;
       const updatesDir = config.updates.dir;
+      const target = config.githubUpdates.target;
 
       if (!owner || !repo) {
         throw new Error('GitHub updates source is not configured (owner/repo missing)');
@@ -236,7 +272,57 @@ class UpdateService {
       const downloaded: UpdateSyncResult['downloaded'] = [];
       const skipped: UpdateSyncResult['skipped'] = [];
 
-      const sortedAssets = [...release.assets].sort((a, b) => {
+      const releaseAssets = [...release.assets];
+
+      // If only Windows is needed, only download what latest.yml points to (and its blockmap).
+      // This avoids spending hours downloading large mac/linux artifacts on low bandwidth servers.
+      if (target === 'windows') {
+        const latest = releaseAssets.find((a) => a?.name === 'latest.yml');
+        if (!latest) {
+          throw new Error('latest.yml is missing in GitHub release assets');
+        }
+
+        const latestPath = path.join(updatesDir, 'latest.yml');
+        // Ensure latest.yml is present for parsing.
+        if (await fileExists(latestPath)) {
+          try {
+            const stat = await fs.stat(latestPath);
+            if (Number.isFinite(latest.size) && stat.size !== latest.size) {
+              await fs.rm(latestPath, { force: true });
+            }
+          } catch {
+            // ignore
+          }
+        }
+        if (!(await fileExists(latestPath))) {
+          log.info('Downloading update manifest', { filename: 'latest.yml' });
+          const actualSize = await downloadReleaseAsset(owner, repo, latest, latestPath, token);
+          downloaded.push({ filename: 'latest.yml', size: actualSize });
+        }
+
+        const latestContent = await fs.readFile(latestPath, 'utf-8');
+        const referenced = parseUpdateYamlUrls(latestContent);
+        const allowNames = new Set<string>(['latest.yml']);
+        for (const ref of referenced) {
+          allowNames.add(path.basename(ref));
+          // blockmap is optional but recommended
+          allowNames.add(`${path.basename(ref)}.blockmap`);
+        }
+
+        // Filter in-place
+        for (let i = releaseAssets.length - 1; i >= 0; i -= 1) {
+          const name = releaseAssets[i]?.name;
+          if (!name) {
+            releaseAssets.splice(i, 1);
+            continue;
+          }
+          if (!allowNames.has(name)) {
+            releaseAssets.splice(i, 1);
+          }
+        }
+      }
+
+      const sortedAssets = releaseAssets.sort((a, b) => {
         const aName = a?.name || '';
         const bName = b?.name || '';
         const pa = assetPriority(aName);
