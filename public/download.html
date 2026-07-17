@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Utility 下载中心</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --card: #171a21;
+      --border: #2a2f3a;
+      --text: #e8eaed;
+      --muted: #9aa3b2;
+      --primary: #5b8def;
+      --ok: #7fd99a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--border);
+      background: #141820;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    header h1 { margin: 0; font-size: 1.15rem; font-weight: 650; }
+    header .actions { display: flex; gap: 10px; align-items: center; }
+    a.btn, button.btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #1c2230;
+      color: var(--text);
+      text-decoration: none;
+      font-size: .88rem;
+      cursor: pointer;
+    }
+    a.btn.primary { background: var(--primary); border-color: transparent; color: #fff; font-weight: 600; }
+    main { max-width: 960px; margin: 0 auto; padding: 22px 18px 48px; }
+    .meta { color: var(--muted); font-size: .9rem; margin-bottom: 16px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--border); font-size: .92rem; }
+    th { color: var(--muted); font-weight: 600; background: #12161f; font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,.02); }
+    .name { font-weight: 560; word-break: break-all; }
+    .size, .date { color: var(--muted); white-space: nowrap; }
+    .badge {
+      display: inline-block;
+      font-size: .72rem;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #243049;
+      color: #9ec1ff;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    .badge.hot { background: #243a2c; color: var(--ok); }
+    .empty, .err { padding: 28px; color: var(--muted); text-align: center; }
+    .err { color: #f07178; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Utility 下载中心</h1>
+    <div class="actions">
+      <button class="btn" id="refreshBtn" type="button">刷新</button>
+      <a class="btn" href="/download/logout">退出</a>
+    </div>
+  </header>
+  <main>
+    <div class="meta" id="meta">加载中…</div>
+    <div class="card">
+      <div id="body"><div class="empty">正在列出文件…</div></div>
+    </div>
+  </main>
+  <script>
+    function formatSize(n) {
+      if (n < 1024) return n + ' B';
+      if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+      if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
+      return (n / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+    }
+    function badgeFor(f) {
+      if (f.kind === 'setup' || (f.name && /Setup/i.test(f.name))) return '<span class="badge">安装包</span>';
+      if (f.kind === 'portable' || (f.name && /\.exe$/i.test(f.name))) return '<span class="badge hot">便携版</span>';
+      return '';
+    }
+    async function load() {
+      const body = document.getElementById('body');
+      const meta = document.getElementById('meta');
+      try {
+        const res = await fetch('/download/api/files', { credentials: 'same-origin' });
+        if (res.status === 401) {
+          location.href = '/download/login';
+          return;
+        }
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || '加载失败');
+        const files = data.data.files || [];
+        meta.textContent = `共 ${files.length} 个完整安装包（仅大版本 Setup / 便携 exe，不含热更与清单）`;
+        if (!files.length) {
+          body.innerHTML = '<div class="empty">暂无完整安装包</div>';
+          return;
+        }
+        const rows = files.map((f) => {
+          const href = f.downloadUrl || ('/download/file/' + encodeURIComponent(f.relPath).replace(/%2F/g, '/'));
+          const ver = f.version ? `<strong>v${escapeHtml(f.version)}</strong> · ` : '';
+          return `<tr>
+            <td class="name">${ver}${escapeHtml(f.name)}${badgeFor(f)}</td>
+            <td class="size">${formatSize(f.size)}</td>
+            <td class="date">${new Date(f.modifiedAt).toLocaleString()}</td>
+            <td><a class="btn primary" href="${href}">下载</a></td>
+          </tr>`;
+        }).join('');
+        body.innerHTML = `<table>
+          <thead><tr><th>版本 / 文件</th><th>大小</th><th>更新时间</th><th></th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+      } catch (e) {
+        body.innerHTML = `<div class="err">${escapeHtml(e.message || String(e))}</div>`;
+        meta.textContent = '加载失败';
+      }
+    }
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+    document.getElementById('refreshBtn').addEventListener('click', load);
+    load();
+  </script>
+</body>
+</html>

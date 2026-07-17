@@ -15,6 +15,11 @@ import statusRoutes from './routes/status';
 import settingsRoutes from './routes/settings';
 import updatesRoutes from './routes/updates';
 import webhooksRoutes from './routes/webhooks';
+import fleetRoutes from './routes/fleet';
+import downloadPortalRoutes from './routes/downloadPortal';
+import controlPlaneRoutes from './routes/controlPlane';
+import { fleetMonitorService } from './services/fleetMonitorService';
+import { checkDbHealth, isControlPlaneDbEnabled } from './db/pool';
 
 const log = logger.createScope('Server');
 
@@ -92,51 +97,79 @@ async function initializeServer() {
       credentials: true,
     }));
 
-    // Rate limiting
-    const limiter = rateLimit({
-      windowMs: config.rateLimit.windowMs,
-      max: config.rateLimit.maxRequests,
-      message: {
-        success: false,
-        error: 'Too many requests, please try again later',
-      },
-    });
-    app.use('/api/', limiter);
-
     // Body parsing and compression
     app.use(compression());
 
-    // Webhooks need raw body for signature verification
+    // Webhooks need raw body for signature verification (before json parser)
     app.use('/api/webhooks', express.raw({ type: 'application/json' }), webhooksRoutes);
 
     app.use(express.json());
     app.use(express.urlencoded({ extended: true }));
 
-    // Static files for status page
+    // Fleet hub: mount BEFORE rate limit.
+    // Dashboard polls /api/fleet/status every ~60s; earlier bug loops also burned the
+    // shared 100/15min bucket and returned 429 to the whole client.
+    app.use('/api/fleet', fleetRoutes);
+
+    // Control plane (auth + config documents) — skip global rate limit for authenticated sync
+    app.use('/api/v1', controlPlaneRoutes);
+
+    // Rate limiting for remaining /api/* (auth, files, settings, …)
+    const limiter = rateLimit({
+      windowMs: config.rateLimit.windowMs,
+      max: config.rateLimit.maxRequests,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: {
+        success: false,
+        error: 'Too many requests, please try again later',
+      },
+      skip: (req) => {
+        const url = req.originalUrl || req.url || '';
+        // Defense in depth if route order changes
+        return url.startsWith('/api/fleet') || url.startsWith('/fleet');
+      },
+    });
+    app.use('/api/', limiter);
+
+    // Static files for status page (settings.html / status.html / download*.html)
     app.use(express.static(path.join(process.cwd(), 'public')));
-    // Static files for electron-updater (generic provider)
+    // Static files for electron-updater (generic provider) — keep public for auto-update clients
     app.use(
       '/updates',
       express.static(config.updates.dir, {
         dotfiles: 'ignore',
         setHeaders: (res, filePath) => {
-          if (filePath.endsWith('.yml') || filePath.endsWith('.yaml')) {
+          if (filePath.endsWith('.yml') || filePath.endsWith('.yaml') || filePath.endsWith('.json')) {
             res.setHeader('Cache-Control', 'no-cache');
           }
         },
       })
     );
 
+    // Password-gated human download portal
+    app.use('/download', downloadPortalRoutes);
+    app.get('/', (_req, res) => {
+      res.redirect('/download');
+    });
+
     // Health check endpoint
-    app.get('/health', (_req, res) => {
+    app.get('/health', async (_req, res) => {
+      const controlPlane = isControlPlaneDbEnabled()
+        ? await checkDbHealth()
+        : { ok: false, error: 'DATABASE_URL not configured' };
       res.json({
         success: true,
         message: 'Server is running',
         timestamp: new Date().toISOString(),
+        controlPlane: {
+          enabled: isControlPlaneDbEnabled(),
+          database: controlPlane,
+        },
       });
     });
 
-    // API routes
+    // API routes (rate-limited)
     app.use('/api/auth', authRoutes);
     app.use('/api/files', fileRoutes);
     app.use('/api/settings', settingsRoutes);
@@ -170,6 +203,13 @@ async function initializeServer() {
       log.info(`Upload directory: ${config.upload.dir}`);
       log.info(`Max file size: ${config.upload.maxFileSize} bytes`);
       log.info('Server initialized successfully');
+      // Hub-side fleet probe loop (OpenViking / peers / self)
+      try {
+        fleetMonitorService.start();
+        log.info('Fleet monitor started');
+      } catch (fleetErr) {
+        log.error('Fleet monitor failed to start', fleetErr);
+      }
     });
   } catch (error) {
     log.error('Failed to initialize server', error);

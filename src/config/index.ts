@@ -61,6 +61,14 @@ export const config = {
     password: process.env.ADMIN_PASSWORD || 'admin123',
   },
 
+  /**
+   * Simple human download portal (cookie gate).
+   * Set DOWNLOAD_SITE_PASSWORD in env; do not commit production secrets to git.
+   */
+  downloadSite: {
+    password: process.env.DOWNLOAD_SITE_PASSWORD || process.env.SITE_PASSWORD || '',
+  },
+
   // Rate limiting
   rateLimit: {
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 minutes

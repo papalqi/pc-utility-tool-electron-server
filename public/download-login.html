@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Utility 下载 · 登录</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --card: #171a21;
+      --border: #2a2f3a;
+      --text: #e8eaed;
+      --muted: #9aa3b2;
+      --primary: #5b8def;
+      --danger: #f07178;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: radial-gradient(1200px 600px at 20% -10%, #1a2744 0%, transparent 55%),
+                  radial-gradient(900px 500px at 100% 0%, #1d2a22 0%, transparent 50%),
+                  var(--bg);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      width: 100%;
+      max-width: 400px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px 28px 24px;
+      box-shadow: 0 20px 50px rgba(0,0,0,.35);
+    }
+    h1 { margin: 0 0 6px; font-size: 1.35rem; font-weight: 650; }
+    p.sub { margin: 0 0 22px; color: var(--muted); font-size: .92rem; line-height: 1.45; }
+    label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 8px; }
+    input[type="password"] {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #0e1016;
+      color: var(--text);
+      font-size: 1rem;
+      outline: none;
+    }
+    input[type="password"]:focus { border-color: var(--primary); }
+    button {
+      margin-top: 16px;
+      width: 100%;
+      padding: 12px 14px;
+      border: none;
+      border-radius: 10px;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 600;
+      font-size: .95rem;
+      cursor: pointer;
+    }
+    button:hover { filter: brightness(1.06); }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    .err {
+      margin-top: 12px;
+      color: var(--danger);
+      font-size: .88rem;
+      min-height: 1.2em;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Utility 下载中心</h1>
+    <p class="sub">请输入访问密码后下载安装包与热更资源。</p>
+    <form id="loginForm">
+      <label for="password">访问密码</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" autofocus required />
+      <button type="submit" id="btn">进入</button>
+      <div class="err" id="err"></div>
+    </form>
+  </div>
+  <script>
+    const form = document.getElementById('loginForm');
+    const err = document.getElementById('err');
+    const btn = document.getElementById('btn');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      err.textContent = '';
+      btn.disabled = true;
+      try {
+        const password = document.getElementById('password').value;
+        const res = await fetch('/download/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ password }),
+          credentials: 'same-origin',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+          err.textContent = data.error || '密码错误';
+          btn.disabled = false;
+          return;
+        }
+        location.href = data.redirect || '/download';
+      } catch (ex) {
+        err.textContent = '网络错误，请重试';
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
