@@ -82,17 +82,28 @@ function isFullReleaseInstaller(name: string, relPath: string): boolean {
   if (n.endsWith('.yml') || n.endsWith('.yaml') || n.endsWith('.json')) return false;
   if (n.endsWith('.blockmap')) return false;
   if (n.includes('builder-debug') || n.includes('builder-effective')) return false;
-  // NSIS Setup or portable exe only
+  // Windows: NSIS Setup or portable exe
   // Setup: PC.Utility.Tool.Setup.1.0.7.exe
   // Portable: PC.Utility.Tool.1.0.7.exe (not Hot)
-  if (!n.endsWith('.exe')) return false;
-  if (/^pc\.utility\.tool\.setup\.\d+\.\d+\.\d+\.exe$/.test(n)) return true;
-  if (/^pc\.utility\.tool\.\d+\.\d+\.\d+\.exe$/.test(n)) return true;
+  if (n.endsWith('.exe')) {
+    if (/^pc\.utility\.tool\.setup\.\d+\.\d+\.\d+\.exe$/.test(n)) return true;
+    if (/^pc\.utility\.tool\.\d+\.\d+\.\d+\.exe$/.test(n)) return true;
+    return false;
+  }
+  // macOS: .dmg installer + .zip archive (electron-builder target order)
+  // PC.Utility.Tool.1.0.7.dmg
+  // PC.Utility.Tool.1.0.7.zip
+  if (n.endsWith('.dmg')) {
+    return /^pc\.utility\.tool\.\d+\.\d+\.\d+\.dmg$/.test(n);
+  }
+  if (n.endsWith('.zip')) {
+    return /^pc\.utility\.tool\.\d+\.\d+\.\d+\.zip$/.test(n);
+  }
   return false;
 }
 
 function versionFromInstallerName(name: string): string | null {
-  const m = name.match(/(\d+\.\d+\.\d+)\.exe$/i);
+  const m = name.match(/(\d+\.\d+\.\d+)\.(exe|dmg|zip)$/i);
   return m ? m[1] : null;
 }
 
@@ -130,7 +141,15 @@ async function listUpdateFiles(
     if (!isFullReleaseInstaller(entry.name, rel)) continue;
     const st = await fs.stat(full);
     const version = versionFromInstallerName(entry.name) || undefined;
-    const kind = /setup/i.test(entry.name) ? 'setup' : 'portable';
+    const lowerName = entry.name.toLowerCase();
+    let kind = 'portable';
+    if (/setup/i.test(entry.name)) {
+      kind = 'setup';
+    } else if (lowerName.endsWith('.dmg')) {
+      kind = 'mac-dmg';
+    } else if (lowerName.endsWith('.zip')) {
+      kind = 'mac-zip';
+    }
     results.push({
       name: entry.name,
       relPath: rel.replace(/\\/g, '/'),

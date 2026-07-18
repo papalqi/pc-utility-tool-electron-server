@@ -102,8 +102,10 @@
       return (n / 1024 / 1024 / 1024).toFixed(2) + ' GB';
     }
     function badgeFor(f) {
-      if (f.kind === 'setup' || (f.name && /Setup/i.test(f.name))) return '<span class="badge">安装包</span>';
-      if (f.kind === 'portable' || (f.name && /\.exe$/i.test(f.name))) return '<span class="badge hot">便携版</span>';
+      if (f.kind === 'setup' || (f.name && /Setup/i.test(f.name))) return '<span class="badge">Windows 安装包</span>';
+      if (f.kind === 'portable' || (f.name && /\.exe$/i.test(f.name))) return '<span class="badge hot">Windows 便携版</span>';
+      if (f.kind === 'mac-dmg' || (f.name && /\.dmg$/i.test(f.name))) return '<span class="badge">Mac 安装包</span>';
+      if (f.kind === 'mac-zip' || (f.name && /\.zip$/i.test(f.name))) return '<span class="badge hot">Mac 便携版</span>';
       return '';
     }
     async function load() {
@@ -118,7 +120,7 @@
         const data = await res.json();
         if (!data.success) throw new Error(data.error || '加载失败');
         const files = data.data.files || [];
-        meta.textContent = `共 ${files.length} 个完整安装包（仅大版本 Setup / 便携 exe，不含热更与清单）`;
+        meta.textContent = `共 ${files.length} 个完整安装包（Windows exe / Mac dmg zip，不含热更与清单）`;
         if (!files.length) {
           body.innerHTML = '<div class="empty">暂无完整安装包</div>';
           return;

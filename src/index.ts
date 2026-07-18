@@ -18,6 +18,7 @@ import webhooksRoutes from './routes/webhooks';
 import fleetRoutes from './routes/fleet';
 import downloadPortalRoutes from './routes/downloadPortal';
 import controlPlaneRoutes from './routes/controlPlane';
+import macBuildRoutes from './routes/macBuild';
 import { fleetMonitorService } from './services/fleetMonitorService';
 import { checkDbHealth, isControlPlaneDbEnabled } from './db/pool';
 
@@ -113,6 +114,10 @@ async function initializeServer() {
 
     // Control plane (auth + config documents) — skip global rate limit for authenticated sync
     app.use('/api/v1', controlPlaneRoutes);
+
+    // Server-triggered macOS build via HAPI — admin only; status polling must not
+    // burn the shared rate-limit bucket during builds
+    app.use('/api/mac-build', macBuildRoutes);
 
     // Rate limiting for remaining /api/* (auth, files, settings, …)
     const limiter = rateLimit({
