@@ -184,6 +184,7 @@ const DEFAULT_TARGETS: FleetTargetDef[] = [
     group: 'DevCloud',
     host: '21.6.92.218',
     description: 'Claude Code Hub · :23000',
+    openUrl: 'http://21.6.92.218:23000/zh-CN/dashboard',
     docsHint: 'cch/DEPLOY.md',
     ssh: { user: 'root', port: 36000, identityHint: 'codev_sk' },
     checks: [

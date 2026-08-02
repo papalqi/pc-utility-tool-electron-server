@@ -20,6 +20,7 @@ import downloadPortalRoutes from './routes/downloadPortal';
 import controlPlaneRoutes from './routes/controlPlane';
 import macBuildRoutes from './routes/macBuild';
 import { fleetMonitorService } from './services/fleetMonitorService';
+import { fleetInsightService } from './services/fleetInsightService';
 import { checkDbHealth, isControlPlaneDbEnabled } from './db/pool';
 
 const log = logger.createScope('Server');
@@ -214,6 +215,13 @@ async function initializeServer() {
         log.info('Fleet monitor started');
       } catch (fleetErr) {
         log.error('Fleet monitor failed to start', fleetErr);
+      }
+      // Business insights (tokens / find counts / CCH charts) — independent of probe loop
+      try {
+        fleetInsightService.start();
+        log.info('Fleet insight service started');
+      } catch (insightErr) {
+        log.error('Fleet insight service failed to start', insightErr);
       }
     });
   } catch (error) {

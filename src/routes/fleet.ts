@@ -9,11 +9,34 @@
 
 import { Router, Request, Response } from 'express'
 import { fleetMonitorService } from '../services/fleetMonitorService'
+import { fleetInsightService } from '../services/fleetInsightService'
 import { normalizeFleetReportBody } from '../services/fleetReportNormalize'
 import { logger } from '../utils/logger'
 
 const log = logger.createScope('FleetRoute')
 const router = Router()
+
+/**
+ * Merge business insight into probe results so *old* clients (no insights IPC)
+ * still show meaningful text instead of bare「正常」.
+ */
+function enrichSnapshotWithInsights(snap: ReturnType<typeof fleetMonitorService.getSnapshot>) {
+  const insights = fleetInsightService.getMap()
+  const results = (snap.results || []).map((r) => {
+    const insight = insights[r.serviceId]
+    if (!insight?.ok || !insight.summary) return r
+    if (r.status === 'down') return r
+    // Keep probe evidence available in checks; surface business summary as card evidence.
+    return {
+      ...r,
+      evidence: insight.summary,
+      description: r.description
+        ? `${r.description} · ${insight.summary}`
+        : insight.summary,
+    }
+  })
+  return { ...snap, results, insights }
+}
 
 router.get('/status', async (_req: Request, res: Response) => {
   try {
@@ -21,13 +44,66 @@ router.get('/status', async (_req: Request, res: Response) => {
     // If never probed yet, run once
     if (!snap.checkedAt) {
       const fresh = await fleetMonitorService.probeAll()
-      res.json({ success: true, data: fresh })
+      res.json({
+        success: true,
+        data: enrichSnapshotWithInsights(fresh),
+      })
       return
     }
-    res.json({ success: true, data: snap })
+    res.json({
+      success: true,
+      data: enrichSnapshotWithInsights(snap),
+    })
   } catch (error) {
     log.error('fleet status failed', error)
     res.status(500).json({ success: false, error: 'fleet status failed' })
+  }
+})
+
+/** Business metrics (tokens, find counts, CCH charts, …). Independent TTL from probes. */
+router.get('/insights', async (req: Request, res: Response) => {
+  try {
+    const refresh = String(req.query.refresh || '') === '1'
+    if (refresh) {
+      await fleetInsightService.refreshAll()
+    }
+    const insights = fleetInsightService.getAll()
+    res.json({
+      success: true,
+      data: {
+        insights,
+        byId: fleetInsightService.getMap(),
+        checkedAt: Date.now(),
+        hub: {
+          host: process.env.FLEET_HUB_HOST || '21.6.70.42',
+          role: 'fleet-insights',
+        },
+      },
+    })
+  } catch (error) {
+    log.error('fleet insights failed', error)
+    res.status(500).json({ success: false, error: 'fleet insights failed' })
+  }
+})
+
+router.get('/insights/:serviceId', async (req: Request, res: Response) => {
+  try {
+    const serviceId = String(req.params.serviceId || '')
+    const refresh = String(req.query.refresh || '') === '1'
+    if (refresh) {
+      const one = await fleetInsightService.refreshService(serviceId)
+      res.json({ success: true, data: one })
+      return
+    }
+    const cached = fleetInsightService.getOne(serviceId)
+    if (!cached) {
+      res.status(404).json({ success: false, error: `no insight adapter for ${serviceId}` })
+      return
+    }
+    res.json({ success: true, data: cached })
+  } catch (error) {
+    log.error('fleet insight one failed', error)
+    res.status(500).json({ success: false, error: 'fleet insight failed' })
   }
 })
 
