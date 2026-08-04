@@ -1,6 +1,7 @@
 /**
- * CCH insight adapter — dashboard overview + provider health + user today totals.
- * Auth: CCH_ADMIN_TOKEN (Hub env). Chart series built from in-process overview history.
+ * CCH insight adapter — overview KPIs + today cost leaderboards.
+ * Rankings come from GET /api/v1/dashboard/realtime (user / provider / model).
+ * Auth: CCH_ADMIN_TOKEN (Hub env).
  */
 
 import {
@@ -8,6 +9,8 @@ import {
   fetchJson,
   formatCompactNumber,
   type FleetInsightMetric,
+  type FleetInsightRankingRow,
+  type FleetInsightRankings,
   type FleetInsightSeries,
   type FleetServiceInsight,
   type InsightAdapterContext,
@@ -15,6 +18,7 @@ import {
 
 const TTL_MS = 60_000;
 const HISTORY_MAX = 48;
+const RANK_TOP_N = 8;
 
 interface Overview {
   concurrentSessions?: number;
@@ -33,14 +37,40 @@ interface ProviderHealthEntry {
   failureCount?: number;
 }
 
-interface UserKey {
-  todayUsage?: number;
-  todayTokens?: number;
-  todayCallCount?: number;
+interface RealtimeUserRank {
+  userId?: number | string;
+  userName?: string;
+  name?: string;
+  totalRequests?: number;
+  totalCost?: number;
+  totalTokens?: number;
 }
 
-interface UserItem {
-  keys?: UserKey[];
+interface RealtimeProviderRank {
+  providerId?: number | string;
+  providerName?: string;
+  name?: string;
+  totalRequests?: number;
+  totalCost?: number;
+  totalTokens?: number;
+  successRate?: number;
+}
+
+interface RealtimeModelRank {
+  model?: string;
+  name?: string;
+  totalRequests?: number;
+  totalCost?: number;
+  totalTokens?: number;
+  successRate?: number;
+}
+
+interface RealtimePayload {
+  metrics?: Overview;
+  userRankings?: RealtimeUserRank[];
+  providerRankings?: RealtimeProviderRank[];
+  modelDistribution?: RealtimeModelRank[];
+  modelRankings?: RealtimeModelRank[];
 }
 
 /** Process-local overview history for sparklines (resets on Hub restart). */
@@ -66,11 +96,96 @@ function trendFromYesterday(today: number, yesterday: number): 'up' | 'down' | '
   return 'flat';
 }
 
+function finite(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function mapRow(
+  id: string | number | undefined,
+  name: string | undefined,
+  fallbackId: string,
+  requests: unknown,
+  cost: unknown,
+  tokens: unknown,
+  successRate?: unknown
+): FleetInsightRankingRow {
+  const row: FleetInsightRankingRow = {
+    id: id != null && String(id).trim() ? String(id) : fallbackId,
+    name: (name && String(name).trim()) || fallbackId,
+    cost: finite(cost),
+    requests: Math.round(finite(requests)),
+    tokens: Math.round(finite(tokens)),
+  };
+  const rate = finite(successRate);
+  if (rate > 0) {
+    // API may return 0-1 ratio or 0-100 percent.
+    row.successRate = rate > 1 ? rate : rate * 100;
+  }
+  return row;
+}
+
+/** Pure parser — unit-tested. */
+export function parseCchRealtimeRankings(payload: unknown, topN = RANK_TOP_N): FleetInsightRankings {
+  const root =
+    payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? (payload as RealtimePayload)
+      : {};
+
+  const users = (root.userRankings || [])
+    .map((item, index) =>
+      mapRow(
+        item.userId,
+        item.userName || item.name,
+        `user-${index + 1}`,
+        item.totalRequests,
+        item.totalCost,
+        item.totalTokens
+      )
+    )
+    .sort((a, b) => b.cost - a.cost)
+    .slice(0, topN);
+
+  const providers = (root.providerRankings || [])
+    .map((item, index) =>
+      mapRow(
+        item.providerId,
+        item.providerName || item.name,
+        `provider-${index + 1}`,
+        item.totalRequests,
+        item.totalCost,
+        item.totalTokens,
+        item.successRate
+      )
+    )
+    .sort((a, b) => b.cost - a.cost)
+    .slice(0, topN);
+
+  const modelSource = root.modelRankings || root.modelDistribution || [];
+  const models = modelSource
+    .map((item, index) =>
+      mapRow(
+        item.model || item.name,
+        item.model || item.name,
+        `model-${index + 1}`,
+        item.totalRequests,
+        item.totalCost,
+        item.totalTokens,
+        item.successRate
+      )
+    )
+    .sort((a, b) => b.cost - a.cost)
+    .slice(0, topN);
+
+  return { users, providers, models };
+}
+
 export async function fetchCchInsight(ctx: InsightAdapterContext): Promise<FleetServiceInsight> {
   const base = ctx.baseUrl.replace(/\/+$/, '');
   const token = ctx.authToken;
   const deepLinks = [
     { label: 'CCH Dashboard', url: `${base}/zh-CN/dashboard` },
+    { label: 'Leaderboard', url: `${base}/zh-CN/leaderboard` },
     { label: 'Login', url: `${base}/zh-CN/login` },
   ];
 
@@ -79,7 +194,7 @@ export async function fetchCchInsight(ctx: InsightAdapterContext): Promise<Fleet
       ok: false,
       source: 'api',
       error: '缺少 CCH_ADMIN_TOKEN（Hub env）',
-      summary: '探活可正常，图表需要 Admin Token',
+      summary: '探活可正常，排行需要 Admin Token',
       deepLinks,
       ttlMs: TTL_MS,
     });
@@ -92,17 +207,20 @@ export async function fetchCchInsight(ctx: InsightAdapterContext): Promise<Fleet
   const timeoutMs = ctx.timeoutMs;
 
   try {
-    const [overviewRes, healthRes, usersRes, providersRes] = await Promise.all([
+    const [overviewRes, healthRes, providersRes, realtimeRes] = await Promise.all([
       fetchJson<Overview>(`${base}/api/v1/dashboard/overview`, { timeoutMs, headers }),
       fetchJson<Record<string, ProviderHealthEntry>>(`${base}/api/v1/providers/health`, {
         timeoutMs,
         headers,
       }),
-      fetchJson<{ items?: UserItem[] }>(`${base}/api/v1/users`, { timeoutMs, headers }),
-      fetchJson<{ items?: Array<{ id?: number; name?: string; isEnabled?: boolean }> }>(`${base}/api/v1/providers`, {
-        timeoutMs,
-        headers,
-      }),
+      fetchJson<{ items?: Array<{ id?: number; name?: string; isEnabled?: boolean }> }>(
+        `${base}/api/v1/providers`,
+        {
+          timeoutMs,
+          headers,
+        }
+      ),
+      fetchJson<RealtimePayload>(`${base}/api/v1/dashboard/realtime`, { timeoutMs, headers }),
     ]);
 
     if (!overviewRes.ok || !overviewRes.data) {
@@ -118,17 +236,6 @@ export async function fetchCchInsight(ctx: InsightAdapterContext): Promise<Fleet
     const o = overviewRes.data;
     pushHistory(o);
 
-    let todayTokens = 0;
-    let todayCallsFromKeys = 0;
-    let todayUsageSum = 0;
-    for (const u of usersRes.data?.items || []) {
-      for (const k of u.keys || []) {
-        todayTokens += Number(k.todayTokens || 0);
-        todayCallsFromKeys += Number(k.todayCallCount || 0);
-        todayUsageSum += Number(k.todayUsage || 0);
-      }
-    }
-
     let circuitsOpen = 0;
     if (healthRes.ok && healthRes.data) {
       for (const v of Object.values(healthRes.data)) {
@@ -136,7 +243,8 @@ export async function fetchCchInsight(ctx: InsightAdapterContext): Promise<Fleet
       }
     }
 
-    const providersEnabled = (providersRes.data?.items || []).filter(p => p.isEnabled !== false).length;
+    const providersEnabled = (providersRes.data?.items || []).filter(p => p.isEnabled !== false)
+      .length;
     const providersTotal = (providersRes.data?.items || []).length;
 
     const todayReq = Number(o.todayRequests || 0);
@@ -145,6 +253,11 @@ export async function fetchCchInsight(ctx: InsightAdapterContext): Promise<Fleet
     const yCost = Number(o.yesterdaySamePeriodCost || 0);
     const rawErrorRate = Number(o.todayErrorRate || 0);
     const errorRatePercent = rawErrorRate >= 0 && rawErrorRate <= 1 ? rawErrorRate * 100 : rawErrorRate;
+
+    const rankings =
+      realtimeRes.ok && realtimeRes.data
+        ? parseCchRealtimeRankings(realtimeRes.data)
+        : { users: [], providers: [], models: [] };
 
     const metrics: FleetInsightMetric[] = [
       {
@@ -168,70 +281,45 @@ export async function fetchCchInsight(ctx: InsightAdapterContext): Promise<Fleet
         unit: 'ms',
       },
       {
-        key: 'concurrent_sessions',
-        label: '并发会话',
-        value: Number(o.concurrentSessions || 0),
-      },
-      {
         key: 'error_rate',
         label: '错误率',
         value: Number(errorRatePercent.toFixed(1)),
         unit: '%',
       },
       {
-        key: 'recent_minute',
-        label: '近1分钟',
-        value: Number(o.recentMinuteRequests || 0),
-        unit: '次',
-      },
-      {
-        key: 'today_tokens_keys',
-        label: '今日 Token',
-        value: todayTokens,
-        unit: 'tok',
-      },
-      {
-        key: 'today_calls_keys',
-        label: 'Key 调用',
-        value: todayCallsFromKeys || todayUsageSum,
-        unit: '次',
+        key: 'providers',
+        label: '供应商',
+        value: providersTotal ? `${providersEnabled}/${providersTotal}` : '—',
       },
       {
         key: 'circuits_open',
         label: '熔断打开',
         value: circuitsOpen,
       },
-      {
-        key: 'providers',
-        label: '供应商',
-        value: providersTotal ? `${providersEnabled}/${providersTotal}` : '—',
-      },
     ];
 
     const series: FleetInsightSeries[] = [
-      {
-        key: 'today_requests_history',
-        label: '今日请求（采样）',
-        points: overviewHistory.map(h => ({ t: h.t, v: h.requests })),
-      },
       {
         key: 'today_cost_history',
         label: '今日成本（采样）',
         points: overviewHistory.map(h => ({ t: h.t, v: Number(h.cost.toFixed(4)) })),
       },
       {
-        key: 'sessions_history',
-        label: '并发会话（采样）',
-        points: overviewHistory.map(h => ({ t: h.t, v: h.sessions })),
+        key: 'today_requests_history',
+        label: '今日请求（采样）',
+        points: overviewHistory.map(h => ({ t: h.t, v: h.requests })),
       },
     ];
 
+    const topUser = rankings.users[0];
     const summary = [
       `今日 ${formatCompactNumber(todayReq)} 请求`,
       `$${todayCost.toFixed(2)}`,
-      `均响 ${Math.round(Number(o.avgResponseTime || 0))}ms`,
+      topUser ? `Top ${topUser.name} $${topUser.cost.toFixed(2)}` : null,
       circuitsOpen > 0 ? `熔断 ${circuitsOpen}` : '熔断正常',
-    ].join(' · ');
+    ]
+      .filter(Boolean)
+      .join(' · ');
 
     return {
       serviceId: ctx.serviceId,
@@ -242,7 +330,12 @@ export async function fetchCchInsight(ctx: InsightAdapterContext): Promise<Fleet
       summary,
       metrics,
       series,
+      rankings,
       deepLinks,
+      error:
+        realtimeRes.ok
+          ? undefined
+          : realtimeRes.error || `realtime HTTP ${realtimeRes.status}（排行可能为空）`,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

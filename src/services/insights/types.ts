@@ -30,6 +30,22 @@ export interface FleetInsightRecentRow {
   ok?: boolean;
 }
 
+/** Cost leaderboard row shared by users / providers / models. */
+export interface FleetInsightRankingRow {
+  id: string;
+  name: string;
+  cost: number;
+  requests: number;
+  tokens: number;
+  successRate?: number;
+}
+
+export interface FleetInsightRankings {
+  users: FleetInsightRankingRow[];
+  providers: FleetInsightRankingRow[];
+  models: FleetInsightRankingRow[];
+}
+
 export interface FleetServiceInsight {
   serviceId: string;
   fetchedAt: number;
@@ -42,6 +58,8 @@ export interface FleetServiceInsight {
   series?: FleetInsightSeries[];
   recent?: FleetInsightRecentRow[];
   deepLinks?: FleetInsightLink[];
+  /** CCH cost leaderboards (today). */
+  rankings?: FleetInsightRankings;
 }
 
 export type InsightAdapterId = 'openviking' | 'cch' | 'hapi' | 'arashi' | 'utility-update' | 'none';
@@ -74,6 +92,7 @@ export function emptyInsight(
     series: partial.series,
     recent: partial.recent,
     deepLinks: partial.deepLinks,
+    rankings: partial.rankings,
   };
 }
 
