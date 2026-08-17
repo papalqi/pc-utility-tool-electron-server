@@ -3,6 +3,9 @@
  *
  * GET  /api/fleet/status   full snapshot (no auth — read-only ops surface)
  * GET  /api/fleet/alerts   recent alerts
+ * GET  /api/fleet/messages inbox of external reports (persisted, unread tracking)
+ * POST /api/fleet/messages/read-all
+ * POST /api/fleet/messages/:id/read
  * POST /api/fleet/probe    force re-probe (optional)
  * POST /api/fleet/report   external service push (CCH custom webhook compatible)
  */
@@ -10,6 +13,7 @@
 import { Router, Request, Response } from 'express'
 import { fleetMonitorService } from '../services/fleetMonitorService'
 import { fleetInsightService } from '../services/fleetInsightService'
+import { fleetMessageStore } from '../services/fleetMessageStore'
 import { normalizeFleetReportBody } from '../services/fleetReportNormalize'
 import { logger } from '../utils/logger'
 
@@ -127,6 +131,42 @@ router.post('/probe', async (_req: Request, res: Response) => {
   }
 })
 
+/** Inbox: external /report pushes (newest first). `before` = `at` cursor for paging. */
+router.get('/messages', (req: Request, res: Response) => {
+  try {
+    const limit = Number(req.query.limit) || 100
+    const before = Number(req.query.before) || undefined
+    res.json({ success: true, data: fleetMessageStore.list(limit, before) })
+  } catch (error) {
+    log.error('fleet messages failed', error)
+    res.status(500).json({ success: false, error: 'fleet messages failed' })
+  }
+})
+
+router.post('/messages/read-all', (_req: Request, res: Response) => {
+  try {
+    const changed = fleetMessageStore.markAllRead()
+    res.json({ success: true, data: { changed, unreadCount: fleetMessageStore.unreadCount() } })
+  } catch (error) {
+    log.error('fleet messages read-all failed', error)
+    res.status(500).json({ success: false, error: 'fleet messages read-all failed' })
+  }
+})
+
+router.post('/messages/:id/read', (req: Request, res: Response) => {
+  try {
+    const msg = fleetMessageStore.markRead(String(req.params.id || ''))
+    if (!msg) {
+      res.status(404).json({ success: false, error: 'message not found' })
+      return
+    }
+    res.json({ success: true, data: msg })
+  } catch (error) {
+    log.error('fleet message read failed', error)
+    res.status(500).json({ success: false, error: 'fleet message read failed' })
+  }
+})
+
 router.post('/report', (req: Request, res: Response) => {
   try {
     const body = (req.body || {}) as Record<string, unknown>
@@ -151,6 +191,16 @@ router.post('/report', (req: Request, res: Response) => {
       status: normalized.status,
       message: normalized.message,
       severity: normalized.severity,
+    })
+
+    // 同时写入收件箱（完整 message + meta），供桌面端「收件箱」页面阅读
+    fleetMessageStore.add({
+      serviceId: normalized.serviceId,
+      serviceName: normalized.serviceName,
+      severity: normalized.severity,
+      status: normalized.status,
+      message: normalized.message,
+      meta: normalized.meta,
     })
 
     log.info('fleet report accepted', {

@@ -19,6 +19,9 @@ import fleetRoutes from './routes/fleet';
 import downloadPortalRoutes from './routes/downloadPortal';
 import controlPlaneRoutes from './routes/controlPlane';
 import macBuildRoutes from './routes/macBuild';
+import knotRoutes from './routes/knot';
+import mcpRoutes from './routes/mcp';
+import cchRoutes from './routes/cch';
 import { fleetMonitorService } from './services/fleetMonitorService';
 import { fleetInsightService } from './services/fleetInsightService';
 import { checkDbHealth, isControlPlaneDbEnabled } from './db/pool';
@@ -119,6 +122,9 @@ async function initializeServer() {
     // Server-triggered macOS build via HAPI — admin only; status polling must not
     // burn the shared rate-limit bucket during builds
     app.use('/api/mac-build', macBuildRoutes);
+    app.use('/api/knot', knotRoutes);
+    app.use('/api/cch', cchRoutes);
+    app.use('/mcp', mcpRoutes);
 
     // Rate limiting for remaining /api/* (auth, files, settings, …)
     const limiter = rateLimit({
@@ -133,7 +139,13 @@ async function initializeServer() {
       skip: (req) => {
         const url = req.originalUrl || req.url || '';
         // Defense in depth if route order changes
-        return url.startsWith('/api/fleet') || url.startsWith('/fleet');
+        return (
+          url.startsWith('/api/fleet') ||
+          url.startsWith('/fleet') ||
+          url.startsWith('/api/knot') ||
+          url.startsWith('/api/cch') ||
+          url.startsWith('/mcp')
+        );
       },
     });
     app.use('/api/', limiter);

@@ -9,6 +9,8 @@ This server hosts more than file transfer and electron-updater feeds.
 | Updates | `/updates/*` | full `latest.yml` + hot `latest-hot.json` |
 | Download portal | `/download/*` | password gate; full installers only |
 | Fleet hub | `/api/fleet/*` | probe loop + external `report` |
+| Fleet MCP | `/mcp` | JSON-RPC: knot chat, or existing project-tools / git / HAPI scripts |
+| Machine jobs | `/api/knot/*` | desktop poll / claim / report |
 | Control plane | `/api/v1/auth/*`, `/api/v1/config/*` | multi-device config + secrets |
 
 ## Environment
