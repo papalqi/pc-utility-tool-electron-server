@@ -15,7 +15,17 @@ import { fleetMonitorService } from '../services/fleetMonitorService'
 import { fleetInsightService } from '../services/fleetInsightService'
 import { fleetMessageStore } from '../services/fleetMessageStore'
 import { normalizeFleetReportBody } from '../services/fleetReportNormalize'
+import origins from '../data/internal-origins.json'
 import { logger } from '../utils/logger'
+
+function hubHost(): string {
+  if (process.env.FLEET_HUB_HOST?.trim()) return process.env.FLEET_HUB_HOST.trim()
+  try {
+    return new URL(origins.hub).hostname
+  } catch {
+    return origins.hub
+  }
+}
 
 const log = logger.createScope('FleetRoute')
 const router = Router()
@@ -79,7 +89,7 @@ router.get('/insights', async (req: Request, res: Response) => {
         byId: fleetInsightService.getMap(),
         checkedAt: Date.now(),
         hub: {
-          host: process.env.FLEET_HUB_HOST || '21.6.70.42',
+          host: hubHost(),
           role: 'fleet-insights',
         },
       },

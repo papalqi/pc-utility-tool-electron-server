@@ -18,6 +18,7 @@ import {
   type MachineJobKind,
 } from '../lib/knotDispatch'
 import { FLEET_CATALOG, FLEET_CONTROLLER, findCatalogMachine } from '../lib/fleetCatalog'
+import origins from '../data/internal-origins.json'
 
 const log = logger.createScope('FleetMcp')
 const router = Router()
@@ -370,7 +371,7 @@ function mcpInfo() {
       {
         mcpServers: {
           [SERVER_NAME]: {
-            url: 'http://21.6.70.42:3000/mcp',
+            url: origins.hubMcp,
             headers: {
               Authorization: 'Bearer <KNOT_DISPATCH_TOKEN>',
             },

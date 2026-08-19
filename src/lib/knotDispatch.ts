@@ -149,29 +149,9 @@ export interface KnotAgentHeartbeat {
   seenAt: number
 }
 
+export { normalizeMachineTarget, targetsMatch } from './machineId'
+
 export const DEFAULT_KNOT_JOB_TIMEOUT_MS = 30 * 60_000
-
-const HOST_ALIASES: Record<string, string> = {
-  PC5: 'PAPEHUANG-PC5',
-  PC6: 'PAPEHUANG-PC6',
-  PC0: 'PAPEHUANG-PC0',
-  MC2: 'PAPEHUANG-MC2',
-  ALLENSHI: 'ALLENSHI-PC5',
-}
-
-export function normalizeMachineTarget(raw: string): string {
-  const trimmed = (raw || '').trim()
-  if (!trimmed) return ''
-  const noDomain = trimmed.split('.')[0] || trimmed
-  const upper = noDomain.toUpperCase()
-  return HOST_ALIASES[upper] || upper
-}
-
-export function targetsMatch(jobTarget: string, hostname: string): boolean {
-  const left = normalizeMachineTarget(jobTarget)
-  const right = normalizeMachineTarget(hostname)
-  return Boolean(left && right && left === right)
-}
 
 export function resolveFleetScriptId(input: KnotJobCreateRequest): string | undefined {
   if (input.scriptId?.trim()) return input.scriptId.trim()

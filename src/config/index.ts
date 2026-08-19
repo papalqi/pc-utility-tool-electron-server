@@ -79,6 +79,21 @@ export const config = {
   cors: {
     origin: process.env.CORS_ORIGIN || '*',
   },
+
+  /**
+   * RSS ingest + distribute. Desktop only reads /rss/* on this host.
+   * RSSHub is pulled here; LSentry on loopback filters; /rss/reading|/rss/deals go out.
+   */
+  rss: {
+    rsshubUpstream: (process.env.RSSHUB_UPSTREAM_URL || 'https://rss.papalqi.top').replace(/\/+$/, ''),
+    rsshubAccessKey: process.env.RSSHUB_ACCESS_KEY || '',
+    lsentryBase: (process.env.LSENTRY_BASE_URL || 'http://127.0.0.1:8080').replace(/\/+$/, ''),
+    cacheDir: process.env.RSS_CACHE_DIR || path.join(process.cwd(), 'data', 'rss-cache'),
+    cacheTtlMs: parseInt(process.env.RSS_CACHE_TTL_MS || '300000', 10),
+    cacheStaleMs: parseInt(process.env.RSS_CACHE_STALE_MS || '86400000', 10),
+    prefetchMs: parseInt(process.env.RSS_PREFETCH_MS || '60000', 10),
+    timeoutMs: parseInt(process.env.RSS_FETCH_TIMEOUT_MS || '20000', 10),
+  },
 };
 
 /**

@@ -1,11 +1,13 @@
 /**
- * Fleet monitor — probes peer services FROM this hub host (21.6.70.42)
+ * Fleet monitor — probes peer services FROM this hub host
  * and exposes a snapshot + alert ring for utility-tool clients.
  *
  * Clients should only hit this host; they do not probe peers directly.
  */
 
 import net from 'net'
+import origins from '../data/internal-origins.json'
+import rawTargets from '../data/service-targets.json'
 import { logger } from '../utils/logger'
 
 const log = logger.createScope('FleetMonitor')
@@ -84,251 +86,45 @@ export interface FleetSnapshot {
   probeIntervalMs: number
 }
 
+function originHost(url: string): string {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return url.replace(/^https?:\/\//i, '').split('/')[0] || url
+  }
+}
+
+type OriginKey = keyof typeof origins
+
+type RawServiceTarget = {
+  id: string
+  name: string
+  group: string
+  originKey: OriginKey
+  hostOriginKey?: OriginKey
+  description?: string
+  docsHint?: string
+  ssh?: FleetTargetDef['ssh']
+  probeChecks?: FleetCheckDef[]
+}
+
 /** Services probed from this hub. Use loopback for co-located processes. */
-const DEFAULT_TARGETS: FleetTargetDef[] = [
-  {
-    id: 'openviking',
-    name: 'OpenViking',
-    group: 'Local',
-    host: '21.6.70.42',
-    description: 'Agent context DB · :1933',
-    openUrl: 'http://21.6.70.42:1933/studio/',
-    docsHint: 'services/openviking.md',
-    ssh: { user: 'root', port: 36000, identityHint: 'codev_sk' },
-    checks: [
-      {
-        id: 'health',
-        label: '/health',
-        kind: 'http',
-        // probe loopback on hub machine
-        url: 'http://127.0.0.1:1933/health',
-        timeoutMs: 4000,
-      },
-    ],
-  },
-  {
-    id: 'utility-update-origin',
-    name: 'Utility Update Origin',
-    group: 'Local',
-    host: '21.6.70.42',
-    description: 'electron-server 更新源 · :3000/updates',
-    openUrl: 'http://21.6.70.42:3000/updates/latest.yml',
-    docsHint: 'services/utility-tool.md',
-    ssh: { user: 'root', port: 36000, identityHint: 'codev_sk' },
-    checks: [
-      {
-        id: 'health',
-        label: '/health',
-        kind: 'http',
-        url: 'http://127.0.0.1:3000/health',
-        timeoutMs: 3000,
-      },
-      {
-        id: 'latest',
-        label: 'latest.yml',
-        kind: 'http',
-        url: 'http://127.0.0.1:3000/updates/latest.yml',
-        timeoutMs: 3000,
-      },
-    ],
-  },
-  {
-    id: 'utility-file-api',
-    name: 'File Transfer API',
-    group: 'Local',
-    host: '21.6.70.42',
-    description: 'electron-server 文件 API · :3000/api',
-    openUrl: 'http://21.6.70.42:3000/status',
-    docsHint: 'services/utility-tool.md',
-    ssh: { user: 'root', port: 36000, identityHint: 'codev_sk' },
-    checks: [
-      {
-        id: 'health',
-        label: '/health',
-        kind: 'http',
-        url: 'http://127.0.0.1:3000/health',
-        timeoutMs: 3000,
-      },
-      {
-        id: 'api',
-        label: '/api/status',
-        kind: 'http',
-        url: 'http://127.0.0.1:3000/api/status',
-        timeoutMs: 3000,
-        expectStatus: [200, 401, 403],
-      },
-    ],
-  },
-  {
-    id: 'hapi-hub',
-    name: 'HAPI Hub',
-    group: 'DevCloud',
-    host: '21.6.69.126',
-    description: 'Remote agent hub · :3006',
-    openUrl: 'http://21.6.69.126:3006/',
-    docsHint: 'services/hapi.md',
-    ssh: { user: 'root', port: 36000, identityHint: 'codev_sk' },
-    checks: [
-      {
-        id: 'health',
-        label: '/health',
-        kind: 'http',
-        url: 'http://21.6.69.126:3006/health',
-        timeoutMs: 5000,
-      },
-    ],
-  },
-  {
-    id: 'cch',
-    name: 'CCH',
-    group: 'DevCloud',
-    host: '21.6.92.218',
-    description: 'Claude Code Hub · :23000',
-    openUrl: 'http://21.6.92.218:23000/zh-CN/dashboard',
-    docsHint: 'cch/DEPLOY.md',
-    ssh: { user: 'root', port: 36000, identityHint: 'codev_sk' },
-    checks: [
-      {
-        id: 'health',
-        label: 'health :23000',
-        kind: 'http',
-        url: 'http://21.6.92.218:23000/api/actions/health',
-        timeoutMs: 5000,
-      },
-    ],
-  },
-  {
-    id: 'renderdoc-reporter',
-    name: 'RenderDoc Reporter',
-    group: 'DevCloud',
-    host: '21.6.95.171',
-    description: 'RenderDoc AI 主部署 · :80 / :8020',
-    openUrl: 'http://21.6.95.171/',
-    docsHint: 'services/renderdoc.md',
-    ssh: { user: 'root', port: 36000, identityHint: 'codev_sk' },
-    checks: [
-      {
-        id: 'http80',
-        label: 'HTTP :80',
-        kind: 'http',
-        url: 'http://21.6.95.171/',
-        timeoutMs: 5000,
-        expectStatus: [200, 301, 302, 304, 401, 403],
-      },
-      {
-        id: 'http8020',
-        label: 'HTTP :8020',
-        kind: 'http',
-        url: 'http://21.6.95.171:8020/',
-        timeoutMs: 5000,
-        expectStatus: [200, 301, 302, 304, 401, 403],
-      },
-    ],
-  },
-  {
-    id: 'renderdoc-reporter-legacy',
-    name: 'RenderDoc Reporter (9.134)',
-    group: 'DevCloud',
-    host: '9.134.68.75',
-    description: 'RenderDoc 部署 2 · :8020',
-    openUrl: 'http://9.134.68.75:8020/',
-    docsHint: 'services/renderdoc.md',
-    ssh: { user: 'papehuang', port: 36000 },
-    checks: [
-      {
-        id: 'http8020',
-        label: 'HTTP :8020',
-        kind: 'http',
-        url: 'http://9.134.68.75:8020/',
-        timeoutMs: 5000,
-        expectStatus: [200, 301, 302, 304, 401, 403],
-      },
-    ],
-  },
-  {
-    id: 'arashi-shader',
-    name: 'Arashi Shader',
-    group: 'DevCloud',
-    host: '9.134.68.75',
-    description: '变体分析平台 · :8080',
-    openUrl: 'http://9.134.68.75:8080/',
-    docsHint: 'services/arashishader.md',
-    ssh: { user: 'papehuang', port: 36000 },
-    checks: [
-      {
-        id: 'home',
-        label: 'HTTP :8080',
-        kind: 'http',
-        url: 'http://9.134.68.75:8080/',
-        timeoutMs: 5000,
-        expectStatus: [200, 301, 302, 304, 401, 403],
-      },
-      {
-        id: 'pipelines',
-        label: '/api/pipelines',
-        kind: 'http',
-        url: 'http://9.134.68.75:8080/api/pipelines',
-        timeoutMs: 5000,
-        expectStatus: [200, 401, 403],
-      },
-    ],
-  },
-  {
-    id: 'blog-frp',
-    name: 'Blog / FRP Gateway',
-    group: 'Tencent',
-    host: '134.175.149.38',
-    description: 'Hugo blog + FRP',
-    openUrl: 'http://134.175.149.38/',
-    ssh: { user: 'root', port: 22 },
-    checks: [
-      {
-        id: 'http',
-        label: 'HTTP :80',
-        kind: 'http',
-        url: 'http://134.175.149.38/',
-        timeoutMs: 6000,
-        expectStatus: [200, 301, 302, 304],
-      },
-    ],
-  },
-  {
-    id: 'open-cloud',
-    name: '开放云枢纽',
-    group: 'Public',
-    host: '118.25.149.172',
-    description: 'CCH Docker / New-API / Clash',
-    ssh: { user: 'root', port: 22 },
-    checks: [
-      {
-        id: 'ssh-tcp',
-        label: 'SSH :22',
-        kind: 'tcp',
-        host: '118.25.149.172',
-        port: 22,
-        timeoutMs: 4000,
-      },
-    ],
-  },
-  {
-    id: 'devcloud-legacy',
-    name: 'DevCloud 9.134',
-    group: 'DevCloud',
-    host: '9.134.68.75',
-    description: 'HAPI×3 / Copilot / MCP',
-    ssh: { user: 'papehuang', port: 36000 },
-    checks: [
-      {
-        id: 'ssh-tcp',
-        label: 'SSH :36000',
-        kind: 'tcp',
-        host: '9.134.68.75',
-        port: 36000,
-        timeoutMs: 4000,
-      },
-    ],
-  },
-]
+const DEFAULT_TARGETS: FleetTargetDef[] = (rawTargets as RawServiceTarget[]).map((item) => {
+  const openUrl = origins[item.originKey]
+  const hostSource = origins[item.hostOriginKey || item.originKey]
+  return {
+    id: item.id,
+    name: item.name,
+    group: item.group,
+    host: originHost(hostSource || openUrl),
+    description: item.description,
+    openUrl: openUrl || undefined,
+    docsHint: item.docsHint,
+    ssh: item.ssh,
+    checks: item.probeChecks || [],
+  }
+})
+
 
 const PROBE_INTERVAL_MS = Number(process.env.FLEET_PROBE_INTERVAL_MS || 30_000)
 const MAX_ALERTS = 100
@@ -475,7 +271,7 @@ class FleetMonitorService {
     }
     return {
       hub: {
-        host: process.env.FLEET_HUB_HOST || '21.6.70.42',
+        host: process.env.FLEET_HUB_HOST || originHost(origins.hub),
         role: 'fleet-aggregator',
         version: '1.0.0',
       },

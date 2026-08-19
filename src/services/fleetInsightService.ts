@@ -3,6 +3,7 @@
  * Clients only call /api/fleet/insights*; secrets stay on Hub.
  */
 
+import origins from '../data/internal-origins.json';
 import { logger } from '../utils/logger';
 import { fleetMonitorService } from './fleetMonitorService';
 import { fetchOpenVikingInsight } from './insights/openviking';
@@ -28,35 +29,34 @@ const DEFAULT_INSIGHT_TARGETS: InsightTarget[] = [
   {
     serviceId: 'openviking',
     adapter: 'openviking',
-    // Co-located with Hub on 21.6.70.42
     baseUrl: process.env.OPENVIKING_BASE_URL || 'http://127.0.0.1:1933',
-    openUrl: 'http://21.6.70.42:1933/studio/',
+    openUrl: origins.openVikingStudio,
     authEnv: 'OPENVIKING_FLEET_API_KEY',
   },
   {
     serviceId: 'cch',
     adapter: 'cch',
-    baseUrl: process.env.CCH_BASE_URL || 'http://21.6.92.218:23000',
-    openUrl: 'http://21.6.92.218:23000/zh-CN/dashboard',
+    baseUrl: process.env.CCH_BASE_URL || origins.cch,
+    openUrl: origins.cchDashboard,
     authEnv: 'CCH_ADMIN_TOKEN',
   },
   {
     serviceId: 'hapi-hub',
     adapter: 'hapi',
-    baseUrl: process.env.HAPI_BASE_URL || 'http://21.6.69.126:3006',
-    openUrl: 'http://21.6.69.126:3006/',
+    baseUrl: process.env.HAPI_BASE_URL || origins.hapiHub,
+    openUrl: origins.hapiHub,
   },
   {
     serviceId: 'arashi-shader',
     adapter: 'arashi',
-    baseUrl: process.env.ARASHI_BASE_URL || 'http://9.134.68.75:8080',
-    openUrl: 'http://9.134.68.75:8080/',
+    baseUrl: process.env.ARASHI_BASE_URL || origins.arashiShader.replace(/\/+$/, ''),
+    openUrl: origins.arashiShader,
   },
   {
     serviceId: 'utility-update-origin',
     adapter: 'utility-update',
     baseUrl: process.env.UTILITY_HUB_BASE_URL || 'http://127.0.0.1:3000',
-    openUrl: 'http://21.6.70.42:3000/updates/latest.yml',
+    openUrl: origins.hubUpdatesYml,
   },
 ];
 

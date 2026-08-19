@@ -22,8 +22,10 @@ import macBuildRoutes from './routes/macBuild';
 import knotRoutes from './routes/knot';
 import mcpRoutes from './routes/mcp';
 import cchRoutes from './routes/cch';
+import rssRoutes from './routes/rss';
 import { fleetMonitorService } from './services/fleetMonitorService';
 import { fleetInsightService } from './services/fleetInsightService';
+import { rssFeedService } from './services/rssFeedService';
 import { checkDbHealth, isControlPlaneDbEnabled } from './db/pool';
 
 const log = logger.createScope('Server');
@@ -126,6 +128,9 @@ async function initializeServer() {
     app.use('/api/cch', cchRoutes);
     app.use('/mcp', mcpRoutes);
 
+    // RSS distribute: desktop + LSentry poll /rss/*; skip the shared bucket.
+    app.use('/rss', rssRoutes);
+
     // Rate limiting for remaining /api/* (auth, files, settings, …)
     const limiter = rateLimit({
       windowMs: config.rateLimit.windowMs,
@@ -144,7 +149,8 @@ async function initializeServer() {
           url.startsWith('/fleet') ||
           url.startsWith('/api/knot') ||
           url.startsWith('/api/cch') ||
-          url.startsWith('/mcp')
+          url.startsWith('/mcp') ||
+          url.startsWith('/rss')
         );
       },
     });
@@ -234,6 +240,16 @@ async function initializeServer() {
         log.info('Fleet insight service started');
       } catch (insightErr) {
         log.error('Fleet insight service failed to start', insightErr);
+      }
+      try {
+        rssFeedService.start();
+        log.info('RSS distribute started', {
+          reading: '/rss/reading',
+          deals: '/rss/deals',
+          hub: '/rss/hub/*',
+        });
+      } catch (rssErr) {
+        log.error('RSS distribute failed to start', rssErr);
       }
     });
   } catch (error) {

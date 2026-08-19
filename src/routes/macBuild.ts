@@ -7,6 +7,7 @@ import { promisify } from 'util';
 import { AuthRequest, ApiResponse } from '../types';
 import { authenticateToken } from '../middleware/auth';
 import { config } from '../config';
+import origins from '../data/internal-origins.json';
 import { logger } from '../utils/logger';
 
 /**
@@ -50,11 +51,11 @@ function requireAdmin(req: AuthRequest, res: Response<ApiResponse>): boolean {
   return true;
 }
 
-const HAPI_HUB_URL = (process.env.HAPI_HUB_URL || 'http://21.6.69.126:3006').replace(/\/$/, '');
+const HAPI_HUB_URL = (process.env.HAPI_HUB_URL || origins.hapiHub).replace(/\/$/, '');
 const MC2_MACHINE_ID = process.env.HAPI_MC2_MACHINE_ID || '9e253395-83d0-40a9-a8c4-2eccad307c58';
 const MAC_BUILD_REPO = process.env.MAC_BUILD_REPO || '/data/workspace/utility-tool';
 const MAC_BUILD_DIR = process.env.MAC_BUILD_DIR || path.join(config.updates.dir, '..', 'mac-build');
-const MAC_BUILD_URL_BASE = (process.env.MAC_BUILD_URL_BASE || `http://21.6.70.42:${config.port}`).replace(/\/$/, '');
+const MAC_BUILD_URL_BASE = (process.env.MAC_BUILD_URL_BASE || `${origins.hub.replace(/:\d+$/, '')}:${config.port}`).replace(/\/$/, '');
 
 const TOKEN_TTL_MS = 60 * 60 * 1000;
 const sourceTokens = new Map<string, { file: string; expires: number }>();
