@@ -176,6 +176,41 @@ const tools = [
     },
   },
   {
+    name: 'fleet_retire_hapi_skill',
+    title: 'Retire HAPI skill everywhere',
+    description:
+      'Safely remove one exact skill from every online target first, then remove it from the HAPI Registry. Refuses offline or unknown targets.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        skillName: { type: 'string', description: 'Exact lowercase HAPI skill name' },
+        targets: { type: 'array', items: { type: 'string' }, description: 'All machines that must retire the skill locally' },
+        registryTarget: { type: 'string', description: 'One of targets; runs the Registry phase after every local deletion succeeds' },
+      },
+      required: ['skillName', 'targets', 'registryTarget'],
+    },
+  },
+  {
+    name: 'fleet_get_hapi_skill_retirement',
+    title: 'Get HAPI skill retirement',
+    description: 'Get a retirement operation and its local and Registry job results.',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string' } },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'fleet_retry_hapi_skill_retirement',
+    title: 'Retry HAPI skill retirement',
+    description: 'Retry only failed or missing local deletions, or the failed Registry deletion after all local deletions succeeded.',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string' } },
+      required: ['id'],
+    },
+  },
+  {
     name: 'fleet_get_cch_profile',
     title: 'Get CCH profile',
     description: 'Read the server CCH client template (URL only, no API key)',
@@ -251,6 +286,14 @@ function asNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  if (value.some((item) => typeof item !== 'string')) {
+    throw new Error('targets must be an array of strings')
+  }
+  return (value as string[]).map((item) => item.trim())
+}
+
 function createJobFromArgs(args: Record<string, unknown>, kind?: MachineJobKind) {
   const request: KnotJobCreateRequest = {
     target: asString(args.target),
@@ -311,6 +354,27 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<un
   }
   if (name === 'fleet_dispatch_knot') return { job: createJobFromArgs(args, 'knot') }
   if (name === 'fleet_dispatch_script') return { job: createJobFromArgs(args, 'script') }
+  if (name === 'fleet_retire_hapi_skill') {
+    return {
+      operation: knotJobService.createHapiSkillRetirement({
+        skillName: asString(args.skillName),
+        targets: asStringArray(args.targets),
+        registryTarget: asString(args.registryTarget),
+      }),
+    }
+  }
+  if (name === 'fleet_get_hapi_skill_retirement') {
+    const id = asString(args.id)
+    if (!id) throw new Error('id required')
+    const result = knotJobService.getHapiSkillRetirementResult(id)
+    if (!result) throw new Error(`HAPI skill retirement not found: ${id}`)
+    return result
+  }
+  if (name === 'fleet_retry_hapi_skill_retirement') {
+    const id = asString(args.id)
+    if (!id) throw new Error('id required')
+    return { operation: knotJobService.retryHapiSkillRetirement(id) }
+  }
   if (name === 'fleet_update_app') {
     const target = asString(args.target)
     if (!target) throw new Error('target required')

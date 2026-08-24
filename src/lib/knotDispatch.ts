@@ -3,6 +3,10 @@ export type MachineJobKind = 'knot' | 'script'
 export type MachineGitAction = 'status' | 'fetch' | 'pull'
 export type MachineHapiSkillAction = 'status' | 'sync' | 'publish' | 'install'
 
+/** Coordinator-only scripts. They are intentionally excluded from the public
+ * Fleet script catalog and can only be created by the retirement coordinator. */
+const INTERNAL_FLEET_SCRIPT_IDS = ['hapi-skill-retire-local', 'hapi-skill-retire-registry'] as const
+
 const FLEET_SCRIPT_IDS = [
   'git-status',
   'git-fetch',
@@ -33,6 +37,8 @@ const FLEET_SCRIPT_IDS = [
 ] as const
 
 export type FleetScriptId = (typeof FLEET_SCRIPT_IDS)[number]
+export type InternalFleetScriptId = (typeof INTERNAL_FLEET_SCRIPT_IDS)[number]
+export type AnyFleetScriptId = FleetScriptId | InternalFleetScriptId
 
 export interface KnotJobCreateRequest {
   target: string
@@ -89,7 +95,7 @@ export interface KnotJob {
   target: string
   targetNormalized: string
   kind: MachineJobKind
-  scriptId?: FleetScriptId
+  scriptId?: AnyFleetScriptId
   repo?: string
   cwd: string
   prompt: string
@@ -168,6 +174,14 @@ export function isFleetScriptId(value: string | undefined): value is FleetScript
   return Boolean(value && (FLEET_SCRIPT_IDS as readonly string[]).includes(value))
 }
 
+export function isInternalFleetScriptId(value: string | undefined): value is InternalFleetScriptId {
+  return Boolean(value && (INTERNAL_FLEET_SCRIPT_IDS as readonly string[]).includes(value))
+}
+
+export function isKnownFleetScriptId(value: string | undefined): value is AnyFleetScriptId {
+  return isFleetScriptId(value) || isInternalFleetScriptId(value)
+}
+
 export function inferMachineJobKind(input: KnotJobCreateRequest): MachineJobKind {
   const scriptId = resolveFleetScriptId(input)
   if (input.kind === 'knot' || (!input.kind && (input.prompt || '').trim() && !scriptId)) {
@@ -200,6 +214,9 @@ export function validateMachineJobCreate(input: KnotJobCreateRequest): string | 
     return null
   }
   const scriptId = resolveFleetScriptId(input)
+  if (isInternalFleetScriptId(scriptId)) {
+    return `scriptId is internal and may only be created by the HAPI skill retirement coordinator: ${scriptId}`
+  }
   if (!isFleetScriptId(scriptId)) {
     return `scriptId must be a known fleet script, got ${scriptId || '(empty)'}`
   }
