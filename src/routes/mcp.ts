@@ -8,6 +8,7 @@ import { authenticateToken } from '../middleware/auth'
 import type { AuthRequest } from '../types'
 import { config } from '../config'
 import { knotJobService } from '../services/knotJobService'
+import { fleetScheduleService } from '../services/fleetScheduleService'
 import { cchProfileService } from '../services/cchProfileService'
 import { logger } from '../utils/logger'
 import {
@@ -18,6 +19,7 @@ import {
   type MachineJobKind,
 } from '../lib/knotDispatch'
 import { FLEET_CATALOG, FLEET_CONTROLLER, findCatalogMachine } from '../lib/fleetCatalog'
+import type { FleetScheduleStepId } from '../lib/fleetSchedules'
 import origins from '../data/internal-origins.json'
 
 const log = logger.createScope('FleetMcp')
@@ -127,7 +129,7 @@ const tools = [
     name: 'fleet_dispatch_script',
     title: 'Dispatch script',
     description:
-      'Queue an existing desktop script: git-status/fetch/pull, compile-typescript, build-unreal, sync-perforce, check-android-config, configure-project, hapi-skill-*.',
+      'Queue an existing desktop script: git-status/fetch/pull, compile-typescript, build-unreal, sync-perforce, check-android-config, configure-project, hapi-skill-*, hapi-cli-update.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -141,12 +143,14 @@ const tools = [
             'compile-typescript',
             'build-unreal',
             'sync-perforce',
+            'p4-status',
             'check-android-config',
             'configure-project',
             'hapi-skill-status',
             'hapi-skill-sync',
             'hapi-skill-publish',
             'hapi-skill-install',
+            'hapi-cli-update',
             'cch-status',
             'cch-apply-claude',
             'cch-apply-codex',
@@ -211,10 +215,101 @@ const tools = [
     },
   },
   {
+    name: 'fleet_list_schedules',
+    title: 'List fleet schedules',
+    description:
+      'List hub-side cron schedules that update/compile fleet repos, plus recent runs with per-machine progress and blocking reasons.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'fleet_save_schedule',
+    title: 'Save fleet schedule',
+    description:
+      'Create or update a hub cron schedule for exactly one machine and one repo. Do not bundle machines or repos. steps are git-status/fetch/pull, sync-perforce, compile-typescript, build-unreal. New schedules default to disabled.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        name: { type: 'string' },
+        cron: { type: 'string', description: '5-field cron (minute hour day month weekday)' },
+        targets: {
+          type: 'array',
+          items: { type: 'string' },
+          minItems: 1,
+          maxItems: 1,
+          description: 'Exactly one machine alias such as PC5 / MC2',
+        },
+        repos: {
+          type: 'array',
+          items: { type: 'string' },
+          minItems: 1,
+          maxItems: 1,
+          description: 'Exactly one repo alias such as mha-main',
+        },
+        steps: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['git-status', 'git-fetch', 'git-pull', 'sync-perforce', 'compile-typescript', 'build-unreal'],
+          },
+        },
+        enabled: { type: 'boolean' },
+        skipIfDirty: { type: 'boolean' },
+        skipOffline: { type: 'boolean' },
+        buildConfig: { type: 'string' },
+        platform: { type: 'string' },
+      },
+      required: ['name', 'cron', 'targets', 'repos', 'steps'],
+    },
+  },
+  {
+    name: 'fleet_delete_schedule',
+    title: 'Delete fleet schedule',
+    description: 'Delete one hub cron schedule. Does not cancel an already running run.',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string' } },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'fleet_run_schedule',
+    title: 'Run fleet schedule now',
+    description: 'Fire a saved schedule immediately. Poll fleet_list_schedules or fleet_get_schedule_run for progress and blocking.',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string' } },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'fleet_get_schedule_run',
+    title: 'Get fleet schedule run',
+    description: 'Get one schedule run, including per-machine/repo step status and blocking reasons.',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string' } },
+      required: ['id'],
+    },
+  },
+  {
     name: 'fleet_get_cch_profile',
     title: 'Get CCH profile',
     description: 'Read the server CCH client template (URL only, no API key)',
     inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'fleet_update_hapi_cli',
+    title: 'Update HAPI CLI',
+    description:
+      'Queue a HAPI CLI binary update on a desktop (download Hub /dist, replace exe, restart runner). Target this machine for a local update, or another hostname/alias for remote. The machine must have a live Fleet heartbeat.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        target: { type: 'string', description: 'Hostname or alias such as PC5 / PC0 / PC6' },
+      },
+      required: ['target'],
+    },
   },
   {
     name: 'fleet_update_app',
@@ -289,9 +384,13 @@ function asNumber(value: unknown): number | undefined {
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   if (value.some((item) => typeof item !== 'string')) {
-    throw new Error('targets must be an array of strings')
+    throw new Error('array of strings required')
   }
-  return (value as string[]).map((item) => item.trim())
+  return (value as string[]).map((item) => item.trim()).filter(Boolean)
+}
+
+function asBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined
 }
 
 function createJobFromArgs(args: Record<string, unknown>, kind?: MachineJobKind) {
@@ -375,6 +474,11 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<un
     if (!id) throw new Error('id required')
     return { operation: knotJobService.retryHapiSkillRetirement(id) }
   }
+  if (name === 'fleet_update_hapi_cli') {
+    const target = asString(args.target)
+    if (!target) throw new Error('target required')
+    return { job: createJobFromArgs({ target, scriptId: 'hapi-cli-update' }, 'script') }
+  }
   if (name === 'fleet_update_app') {
     const target = asString(args.target)
     if (!target) throw new Error('target required')
@@ -407,6 +511,44 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<un
     const target = asString(args.target)
     if (!target) throw new Error('target required')
     return { job: createJobFromArgs({ target, scriptId: 'app-restart' }, 'script') }
+  }
+  if (name === 'fleet_list_schedules') {
+    return fleetScheduleService.snapshot()
+  }
+  if (name === 'fleet_save_schedule') {
+    return {
+      schedule: fleetScheduleService.saveSchedule({
+        id: asString(args.id) || undefined,
+        name: asString(args.name),
+        cron: asString(args.cron),
+        targets: asStringArray(args.targets),
+        repos: asStringArray(args.repos),
+        steps: asStringArray(args.steps) as FleetScheduleStepId[],
+        enabled: asBoolean(args.enabled),
+        skipIfDirty: asBoolean(args.skipIfDirty),
+        skipOffline: asBoolean(args.skipOffline),
+        buildConfig: asString(args.buildConfig) || undefined,
+        platform: asString(args.platform) || undefined,
+      }),
+    }
+  }
+  if (name === 'fleet_delete_schedule') {
+    const id = asString(args.id)
+    if (!id) throw new Error('id required')
+    if (!fleetScheduleService.deleteSchedule(id)) throw new Error(`schedule not found: ${id}`)
+    return { id }
+  }
+  if (name === 'fleet_run_schedule') {
+    const id = asString(args.id)
+    if (!id) throw new Error('id required')
+    return { run: fleetScheduleService.runNow(id) }
+  }
+  if (name === 'fleet_get_schedule_run') {
+    const id = asString(args.id)
+    if (!id) throw new Error('id required')
+    const run = fleetScheduleService.getRun(id)
+    if (!run) throw new Error(`schedule run not found: ${id}`)
+    return { run }
   }
   if (name === 'fleet_get_cch_profile') {
     return { profile: cchProfileService.get(false) }

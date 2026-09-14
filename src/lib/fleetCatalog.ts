@@ -7,7 +7,15 @@ export type FleetCatalogMachine = {
   aliases: string[]
   kind: 'windows' | 'mac'
   role: 'controller' | 'desktop'
-  expectedRepos: Array<{ alias: string; path: string }>
+  expectedRepos: Array<{
+    alias: string
+    path: string
+    p4Client?: string
+    p4Stream?: string
+    p4Port?: string
+    p4User?: string
+    p4Charset?: string
+  }>
 }
 
 export const FLEET_CATALOG: FleetCatalogMachine[] = fleetMachines.machines.map((item) => ({

@@ -16,6 +16,7 @@ import settingsRoutes from './routes/settings';
 import updatesRoutes from './routes/updates';
 import webhooksRoutes from './routes/webhooks';
 import fleetRoutes from './routes/fleet';
+import fleetScheduleRoutes from './routes/fleetSchedules';
 import downloadPortalRoutes from './routes/downloadPortal';
 import controlPlaneRoutes from './routes/controlPlane';
 import macBuildRoutes from './routes/macBuild';
@@ -24,6 +25,7 @@ import mcpRoutes from './routes/mcp';
 import cchRoutes from './routes/cch';
 import rssRoutes from './routes/rss';
 import { fleetMonitorService } from './services/fleetMonitorService';
+import { fleetScheduleService } from './services/fleetScheduleService';
 import { fleetInsightService } from './services/fleetInsightService';
 import { rssFeedService } from './services/rssFeedService';
 import { checkDbHealth, isControlPlaneDbEnabled } from './db/pool';
@@ -116,6 +118,7 @@ async function initializeServer() {
     // Fleet hub: mount BEFORE rate limit.
     // Dashboard polls /api/fleet/status every ~60s; earlier bug loops also burned the
     // shared 100/15min bucket and returned 429 to the whole client.
+    app.use('/api/fleet/schedules', fleetScheduleRoutes);
     app.use('/api/fleet', fleetRoutes);
 
     // Control plane (auth + config documents) — skip global rate limit for authenticated sync
@@ -156,8 +159,12 @@ async function initializeServer() {
     });
     app.use('/api/', limiter);
 
-    // Static files for status page (settings.html / status.html / download*.html)
-    app.use(express.static(path.join(process.cwd(), 'public')));
+    // Static files for status page (settings.html / status.html / download*.html / console/)
+    const publicDir = path.join(process.cwd(), 'public');
+    app.use(express.static(publicDir));
+    app.get(['/console', '/console/'], (_req, res) => {
+      res.sendFile(path.join(publicDir, 'console', 'index.html'));
+    });
     // Static files for electron-updater (generic provider) — keep public for auto-update clients
     app.use(
       '/updates',
@@ -240,6 +247,12 @@ async function initializeServer() {
         log.info('Fleet insight service started');
       } catch (insightErr) {
         log.error('Fleet insight service failed to start', insightErr);
+      }
+      try {
+        fleetScheduleService.start();
+        log.info('Fleet schedule service started');
+      } catch (scheduleErr) {
+        log.error('Fleet schedule service failed to start', scheduleErr);
       }
       try {
         rssFeedService.start();

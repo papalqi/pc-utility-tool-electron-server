@@ -14,12 +14,14 @@ const FLEET_SCRIPT_IDS = [
   'compile-typescript',
   'build-unreal',
   'sync-perforce',
+  'p4-status',
   'check-android-config',
   'configure-project',
   'hapi-skill-status',
   'hapi-skill-sync',
   'hapi-skill-publish',
   'hapi-skill-install',
+  'hapi-cli-update',
   'cch-status',
   'cch-apply-claude',
   'cch-apply-codex',
@@ -197,6 +199,8 @@ export function defaultTimeoutForKind(kind: MachineJobKind, scriptId?: string): 
   if (scriptId === 'build-unreal') return 90 * 60_000
   if (scriptId === 'compile-typescript' || scriptId === 'sync-perforce') return 60 * 60_000
   if (scriptId === 'app-remote-update' || scriptId === 'app-update') return 30 * 60_000
+  if (scriptId === 'hapi-cli-update') return 15 * 60_000
+  if (scriptId === 'p4-status') return 2 * 60_000
   if (scriptId?.startsWith('git-')) return 10 * 60_000
   if (scriptId?.startsWith('cch-') || scriptId === 'app-restart') return 2 * 60_000
   return 15 * 60_000
@@ -220,7 +224,7 @@ export function validateMachineJobCreate(input: KnotJobCreateRequest): string | 
   if (!isFleetScriptId(scriptId)) {
     return `scriptId must be a known fleet script, got ${scriptId || '(empty)'}`
   }
-  if (scriptId.startsWith('git-') || scriptId === 'compile-typescript' || scriptId === 'build-unreal' || scriptId === 'sync-perforce' || scriptId === 'check-android-config') {
+  if (scriptId.startsWith('git-') || scriptId === 'compile-typescript' || scriptId === 'build-unreal' || scriptId === 'sync-perforce' || scriptId === 'p4-status' || scriptId === 'check-android-config') {
     if (!repo && !cwd && !(input.project || '').trim()) {
       return `repo, cwd, or project required for ${scriptId}`
     }
